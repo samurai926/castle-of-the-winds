@@ -826,16 +826,22 @@ export class GameController {
   }
 
   private wizardsFire(): void {
-    const map = currentMap(this.state);
     const entities = currentEntities(this.state);
     const px = this.state.player.x, py = this.state.player.y;
 
     for (const enemy of entities) {
       if (enemy.type !== "enemy" || enemy.rangedAtk === undefined || !enemy.aware) continue;
 
-      const ddx = Math.sign(px - enemy.x);
-      const ddy = Math.sign(py - enemy.y);
-      if (ddx === 0 && ddy === 0) continue;
+      const dx = px - enemy.x, dy = py - enemy.y;
+      if (dx === 0 && dy === 0) continue;
+
+      // Only fire along cardinal or 45° diagonal — bolt must reach player's exact tile
+      if (dx !== 0 && dy !== 0 && Math.abs(dx) !== Math.abs(dy)) continue;
+
+      const ddx = Math.sign(dx), ddy = Math.sign(dy);
+
+      // Line-of-sight: walk from wizard to player, abort if any solid tile or blocking entity
+      if (!this.wizardHasLoS(enemy.x, enemy.y, px, py, ddx, ddy)) continue;
 
       const stepX = enemy.x + ddx, stepY = enemy.y + ddy;
 
@@ -849,11 +855,24 @@ export class GameController {
         if (this.state.player.hp <= 0) { this.state.dead = true; this.showGameOver(enemy.name ?? "a wizard"); }
       } else {
         const ownerId = `${enemy.x},${enemy.y}`;
-        if (!this.state.projectiles.some(p => p.ownerId === ownerId) && !map.isSolid(stepX, stepY)) {
+        if (!this.state.projectiles.some(p => p.ownerId === ownerId)) {
           this.state.projectiles.push({ x: stepX, y: stepY, dx: ddx, dy: ddy, damage: enemy.rangedAtk, ownerId });
         }
       }
     }
+  }
+
+  private wizardHasLoS(wx: number, wy: number, px: number, py: number, ddx: number, ddy: number): boolean {
+    const map = currentMap(this.state);
+    const entities = currentEntities(this.state);
+    let cx = wx + ddx, cy = wy + ddy;
+    while (cx !== px || cy !== py) {
+      if (map.isSolid(cx, cy)) return false;
+      if (entities.some(e => e.x === cx && e.y === cy &&
+          (e.type === "enemy" || e.type === "npc" || e.type === "building"))) return false;
+      cx += ddx; cy += ddy;
+    }
+    return true;
   }
 
   private moveProjectiles(): void {
