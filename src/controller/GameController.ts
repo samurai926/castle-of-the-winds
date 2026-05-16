@@ -39,7 +39,23 @@ export class GameController {
   private dungeonDiff: DungeonDifficulty = "easy";
   private dungeonMeta: Record<string, { size: DungeonSize; diff: DungeonDifficulty }> = {};
   private killMode = false;
+  private spawnMode = false;
   private levelUpOpen = false;
+
+  private readonly SPAWN_CATALOG: Record<string, Partial<Entity> & { sprite: string; name: string; hp: number; atk: number }> = {
+    "Scorpion":      { sprite:"scorpion", name:"Scorpion",              hp:5,  maxHp:5,  atk:1, def:0, xpReward:12  },
+    "Goblin":        { sprite:"orc",      name:"Goblin",                hp:6,  maxHp:6,  atk:2, def:0, xpReward:15  },
+    "Orc":           { sprite:"orc",      name:"Orc",                   hp:10, maxHp:10, atk:3, def:1, xpReward:30  },
+    "Skeleton":      { sprite:"skeleton", name:"Skeleton",              hp:8,  maxHp:8,  atk:2, def:1, xpReward:28  },
+    "Cyclops":       { sprite:"cyclops",  name:"Cyclops",               hp:14, maxHp:14, atk:4, def:2, xpReward:45  },
+    "Dark Mage":     { sprite:"villager", name:"Dark Mage",             hp:14, maxHp:14, atk:0, def:1, xpReward:60,  rangedAtk:9  },
+    "Demon":         { sprite:"demon",    name:"Demon",                 hp:20, maxHp:20, atk:5, def:2, xpReward:80  },
+    "Gargoyle":      { sprite:"sphinx",   name:"Gargoyle",              hp:12, maxHp:12, atk:4, def:2, xpReward:60  },
+    "Void Mage":     { sprite:"villager", name:"Void Mage",             hp:20, maxHp:20, atk:0, def:2, xpReward:100, rangedAtk:15 },
+    "Cave Troll":    { sprite:"cyclops",  name:"Cave Troll [BOSS]",     hp:30, maxHp:30, atk:4, def:2, xpReward:120 },
+    "Dungeon Lord":  { sprite:"demon",    name:"Dungeon Lord [BOSS]",   hp:55, maxHp:55, atk:6, def:4, xpReward:300 },
+    "Void Archdemon":{ sprite:"sphinx",   name:"Void Archdemon [BOSS]", hp:90, maxHp:90, atk:9, def:6, xpReward:600 },
+  };
   private levelUpBaseStats: { str: number; int: number; con: number; dex: number; statPoints: number } | null = null;
   private canvas: HTMLCanvasElement;
 
@@ -88,6 +104,7 @@ export class GameController {
     document.getElementById("dbg-levelup-btn")?.addEventListener("click", () => this.debugLevelUp());
     document.getElementById("dbg-gen-btn")?.addEventListener("click", () => this.debugGenDungeon());
     document.getElementById("dbg-preview-btn")?.addEventListener("click", () => this.debugPreviewDungeon());
+    document.getElementById("dbg-spawn-btn")?.addEventListener("click", () => this.debugEnterSpawnMode());
     document.getElementById("dbg-close")?.addEventListener("click", () => this.closeDebugMenu());
 
     // Level-up modal
@@ -137,7 +154,7 @@ export class GameController {
       if (this.state.started && !this.state.dead && !this.anyModalOpen()) {
         this.moveProjectiles();
       }
-    }, 500);
+    }, 1000);
     this.loop();
   }
 
@@ -176,6 +193,12 @@ export class GameController {
         this.killMode = false;
         this.canvas.style.cursor = "";
         this.addMessage("[DEBUG] Kill mode cancelled.");
+        return;
+      }
+      if (this.spawnMode) {
+        this.spawnMode = false;
+        this.canvas.style.cursor = "";
+        this.addMessage("[DEBUG] Spawn mode cancelled.");
         return;
       }
       if (this.state.inventoryOpen) { this.closeInventory(); return; }
@@ -420,6 +443,15 @@ export class GameController {
     this.addMessage("[DEBUG] Click an enemy to kill it. ESC to cancel.");
   }
 
+  private debugEnterSpawnMode(): void {
+    this.closeDebugMenu();
+    const sel = document.getElementById("dbg-spawn-select") as HTMLSelectElement;
+    const key = sel?.value ?? "Goblin";
+    this.spawnMode = true;
+    this.canvas.style.cursor = "crosshair";
+    this.addMessage(`[DEBUG] Click tile to spawn ${key}. ESC to cancel.`);
+  }
+
   private debugLevelUp(): void {
     this.closeDebugMenu();
     const s = this.state.stats;
@@ -460,13 +492,14 @@ export class GameController {
       return;
     }
 
+    const ts = this.renderer.tileSize;
+    const camX = Math.floor(this.state.player.x - Math.floor(this.renderer.viewportTilesX / 2));
+    const camY = Math.floor(this.state.player.y - Math.floor(this.renderer.viewportTilesY / 2));
+    const tileX = camX + Math.floor(px / ts);
+    const tileY = camY + Math.floor(py / ts);
+
     // Kill mode: click to kill enemy in normal view
     if (this.killMode) {
-      const ts = this.renderer.tileSize;
-      const camX = Math.floor(this.state.player.x - Math.floor(this.renderer.viewportTilesX / 2));
-      const camY = Math.floor(this.state.player.y - Math.floor(this.renderer.viewportTilesY / 2));
-      const tileX = camX + Math.floor(px / ts);
-      const tileY = camY + Math.floor(py / ts);
       const entities = currentEntities(this.state);
       const idx = entities.findIndex(e2 => e2.type === "enemy" && e2.x === tileX && e2.y === tileY);
       if (idx !== -1) {
@@ -476,6 +509,40 @@ export class GameController {
         this.addMessage("[DEBUG] No enemy there.");
       }
       this.killMode = false;
+      this.canvas.style.cursor = "";
+      return;
+    }
+
+    // Spawn mode: click tile to place selected enemy
+    if (this.spawnMode) {
+      const map = currentMap(this.state);
+      if (map.isSolid(tileX, tileY)) {
+        this.addMessage("[DEBUG] Can't spawn on solid tile.");
+      } else {
+        const sel = document.getElementById("dbg-spawn-select") as HTMLSelectElement;
+        const key = sel?.value ?? "Goblin";
+        const tmpl = this.SPAWN_CATALOG[key];
+        if (tmpl) {
+          const entities = currentEntities(this.state);
+          const entity: Entity = {
+            x: tileX, y: tileY,
+            type: "enemy",
+            sprite: tmpl.sprite,
+            name: tmpl.name,
+            hp: tmpl.hp,
+            maxHp: tmpl.maxHp ?? tmpl.hp,
+            atk: tmpl.atk,
+            def: tmpl.def ?? 0,
+            xpReward: tmpl.xpReward,
+            aware: true,
+            ...(tmpl.rangedAtk !== undefined ? { rangedAtk: tmpl.rangedAtk } : {}),
+            loot: [{ x:0, y:0, type:"treasure", sprite:"gold", name:"Gold", gold: 10 }],
+          };
+          entities.push(entity);
+          this.addMessage(`[DEBUG] Spawned ${tmpl.name} at (${tileX}, ${tileY}).`);
+        }
+      }
+      this.spawnMode = false;
       this.canvas.style.cursor = "";
     }
   }

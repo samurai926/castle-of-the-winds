@@ -471,6 +471,34 @@
           <button class="win-action-btn" id="dbg-gen-btn">Create Dungeon</button>
           <button class="win-action-btn" id="dbg-preview-btn">Preview Map</button>
         </div>
+        <hr style="border:none; border-top:1px solid #808080; margin:8px 0;">
+        <div style="font-weight:bold; font-size:11px; margin-bottom:4px;">Enemy Spawner</div>
+        <div class="win-row">
+          <label>Type:</label>
+          <select id="dbg-spawn-select" style="flex:1;">
+            <optgroup label="— Easy —">
+              <option value="Scorpion">Scorpion</option>
+              <option value="Goblin">Goblin</option>
+            </optgroup>
+            <optgroup label="— Hard —">
+              <option value="Orc">Orc</option>
+              <option value="Skeleton">Skeleton</option>
+              <option value="Cyclops">Cyclops</option>
+              <option value="Dark Mage">Dark Mage (ranged)</option>
+            </optgroup>
+            <optgroup label="— Ultra —">
+              <option value="Demon">Demon</option>
+              <option value="Gargoyle">Gargoyle</option>
+              <option value="Void Mage">Void Mage (ranged)</option>
+            </optgroup>
+            <optgroup label="— Bosses —">
+              <option value="Cave Troll">Cave Troll [BOSS]</option>
+              <option value="Dungeon Lord">Dungeon Lord [BOSS]</option>
+              <option value="Void Archdemon">Void Archdemon [BOSS]</option>
+            </optgroup>
+          </select>
+          <button class="win-action-btn" id="dbg-spawn-btn">Spawn</button>
+        </div>
       </div>
     </div>
   </div>
