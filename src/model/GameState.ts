@@ -86,6 +86,7 @@ export interface GameState {
   activeShopId: string | null;
   mapModeReturnId: string | null;
   helpOpen: boolean;
+  mapPreviewMeta: { size: string; diff: string; mapId: string } | null;
 }
 
 export function currentMap(s: GameState): TileMap {

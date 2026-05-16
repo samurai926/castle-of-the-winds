@@ -66,6 +66,7 @@ async function bootstrap() {
     activeShopId: null,
     mapModeReturnId: null,
     helpOpen: false,
+    mapPreviewMeta: null,
   };
 
   const checkReady = setInterval(() => {

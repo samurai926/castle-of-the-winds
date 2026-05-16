@@ -155,6 +155,14 @@ export class GameController {
   private onKey(e: KeyboardEvent): void {
     if (!this.state.started) return;
 
+    // Any key closes map / debug preview
+    if (this.state.mapMode) {
+      e.preventDefault();
+      this.toggleMap();
+      this.input.consumeMove();
+      return;
+    }
+
     if (e.key === "Escape") {
       e.preventDefault();
       if (this.killMode) {
@@ -208,6 +216,7 @@ export class GameController {
         delete this.state.maps["dungeon_preview"];
       }
       this.state.mapMode = false;
+      this.state.mapPreviewMeta = null;
       this.setSidebarMapMode(false);
     } else {
       this.state.mapMode = true;
@@ -346,13 +355,16 @@ export class GameController {
     this.closeDebugMenu();
     const realMapId = this.state.currentMapId;
     const realInst = this.state.maps[realMapId];
-    // fogOfWar=false initializes all seen[] to true → every tile visible
     const previewMap = new TileMap(realInst.map.grid, realInst.map.tileDefs, false);
     this.state.maps["dungeon_preview"] = { map: previewMap, entities: realInst.entities };
     this.state.mapModeReturnId = realMapId;
     this.state.currentMapId = "dungeon_preview";
+    const meta = this.dungeonMeta[realMapId];
+    this.state.mapPreviewMeta = meta
+      ? { size: meta.size, diff: meta.diff, mapId: realMapId }
+      : null;
     this.toggleMap();
-    this.addMessage("[DEBUG] Full map revealed. Press M to close.");
+    this.addMessage("[DEBUG] Full map revealed. Press any key to close.");
   }
 
   private debugAddAllItems(): void {
