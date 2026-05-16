@@ -67,6 +67,7 @@ async function bootstrap() {
     mapModeReturnId: null,
     helpOpen: false,
     mapPreviewMeta: null,
+    projectiles: [],
   };
 
   const checkReady = setInterval(() => {

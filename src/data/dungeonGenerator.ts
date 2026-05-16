@@ -10,6 +10,7 @@ interface EnemyTemplate {
   hp: number; atk: number; def: number;
   goldMin: number; goldMax: number;
   xpReward: number;
+  rangedAtk?: number;
 }
 
 const ENEMY_POOLS: Record<DungeonDifficulty, EnemyTemplate[]> = {
@@ -27,6 +28,13 @@ const ENEMY_POOLS: Record<DungeonDifficulty, EnemyTemplate[]> = {
     { sprite:"cyclops",  name:"Cyclops",  hp:18, atk:5, def:3, goldMin:35, goldMax:70,  xpReward:70 },
     { sprite:"sphinx",   name:"Gargoyle", hp:12, atk:4, def:2, goldMin:25, goldMax:60,  xpReward:60 },
   ],
+};
+
+// Wizards appear only in medium/large dungeons; keyed by difficulty
+const WIZARD_TEMPLATES: Record<DungeonDifficulty, EnemyTemplate> = {
+  easy:  { sprite:"villager", name:"Dark Mage",  hp:10, atk:0, def:0, goldMin:15, goldMax:35,  xpReward:40,  rangedAtk:5  },
+  hard:  { sprite:"villager", name:"Dark Mage",  hp:14, atk:0, def:1, goldMin:25, goldMax:55,  xpReward:60,  rangedAtk:9  },
+  ultra: { sprite:"villager", name:"Void Mage",  hp:20, atk:0, def:2, goldMin:45, goldMax:90,  xpReward:100, rangedAtk:15 },
 };
 
 const BOSS_TEMPLATES: Record<DungeonDifficulty, EnemyTemplate> = {
@@ -233,15 +241,20 @@ export function generateDungeon(
   });
 
   // ── Middle rooms ─────────────────────────────────────────────────
+  const wizardTmpl = size !== "small" ? WIZARD_TEMPLATES[difficulty] : null;
   for (let i = 1; i < rooms.length - 1; i++) {
     const room = rooms[i];
     for (let e = 0; e < enemyPer; e++) {
-      const tmpl = pick(enemyPool);
+      // One wizard per dungeon (roughly 25% chance per room on medium/large)
+      const useWizard = wizardTmpl && Math.random() < 0.25 &&
+        !entities.some(en => en.rangedAtk !== undefined);
+      const tmpl = useWizard ? wizardTmpl! : pick(enemyPool);
       const pos = findFloorInRoom(grid, room);
       entities.push({
         x: pos.x, y: pos.y,
         type: "enemy", sprite: tmpl.sprite, name: tmpl.name,
         hp: tmpl.hp, maxHp: tmpl.hp, atk: tmpl.atk, def: tmpl.def, xpReward: tmpl.xpReward,
+        ...(tmpl.rangedAtk !== undefined ? { rangedAtk: tmpl.rangedAtk } : {}),
         loot: [{ x:0, y:0, type:"treasure", sprite:"gold", name:"Gold", gold: rand(tmpl.goldMin, tmpl.goldMax) }],
       });
     }

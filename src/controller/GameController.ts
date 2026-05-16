@@ -1,6 +1,7 @@
 import {
   GameState,
   Entity,
+  Projectile,
   EquipSlot,
   currentMap,
   currentEntities,
@@ -522,9 +523,11 @@ export class GameController {
       case "enemy": {
         const hp = entity.hp ?? "?";
         const maxHp = entity.maxHp ?? "?";
-        const atk = entity.atk ?? 0;
         const def = entity.def ?? 0;
-        return `${entity.name ?? "Enemy"} — HP: ${hp}/${maxHp}  ATK: ${atk}  DEF: ${def}`;
+        if (entity.rangedAtk !== undefined) {
+          return `${entity.name ?? "Wizard"} — HP: ${hp}/${maxHp}  BOLT: ${entity.rangedAtk}  DEF: ${def}  [ranged]`;
+        }
+        return `${entity.name ?? "Enemy"} — HP: ${hp}/${maxHp}  ATK: ${entity.atk ?? 0}  DEF: ${def}`;
       }
       case "npc": {
         const shopId = entity.behavior?.shopId as string | undefined;
@@ -709,6 +712,29 @@ export class GameController {
 
     for (const enemy of entities) {
       if (enemy.type !== "enemy" || !enemy.aware) continue;
+
+      // ── Ranged (wizard) — fires every turn, never charges ──────────
+      if (enemy.rangedAtk !== undefined) {
+        const ddx = Math.sign(px - enemy.x);
+        const ddy = Math.sign(py - enemy.y);
+        if (ddx === 0 && ddy === 0) continue;
+        const stepX = enemy.x + ddx, stepY = enemy.y + ddy;
+
+        if (stepX === px && stepY === py) {
+          // Point-blank zap
+          const dmg = Math.max(1, enemy.rangedAtk - this.playerTotalDef());
+          this.state.player.hp = (this.state.player.hp ?? 0) - dmg;
+          this.state.stats.hp = this.state.player.hp;
+          this.addMessage(`${enemy.name ?? "Wizard"} zaps you point-blank for ${dmg}!`);
+          this.updateStatsUI();
+          if (this.state.player.hp <= 0) { this.state.dead = true; this.showGameOver(enemy.name ?? "a wizard"); }
+        } else if (!map.isSolid(stepX, stepY)) {
+          this.state.projectiles.push({ x: stepX, y: stepY, dx: ddx, dy: ddy, damage: enemy.rangedAtk });
+        }
+        continue;
+      }
+
+      // ── Melee — charge player ───────────────────────────────────────
       if (Math.random() < 0.4) continue;
 
       const dx = Math.sign(px - enemy.x);
@@ -733,6 +759,42 @@ export class GameController {
         break;
       }
     }
+  }
+
+  private moveProjectiles(): void {
+    if (this.state.projectiles.length === 0) return;
+    const map = currentMap(this.state);
+    const entities = currentEntities(this.state);
+    const px = this.state.player.x, py = this.state.player.y;
+    const alive: Projectile[] = [];
+
+    for (const proj of this.state.projectiles) {
+      const nx = proj.x + proj.dx;
+      const ny = proj.y + proj.dy;
+
+      if (map.isSolid(nx, ny)) continue;
+
+      // Blocked by any solid entity (not items/treasure/portals)
+      const blocked = entities.some(e =>
+        e.x === nx && e.y === ny &&
+        e.type !== "item" && e.type !== "treasure" && e.type !== "portal" && e.type !== "door"
+      );
+      if (blocked) continue;
+
+      if (nx === px && ny === py) {
+        const dmg = Math.max(1, proj.damage - this.playerTotalDef());
+        this.state.player.hp = (this.state.player.hp ?? 0) - dmg;
+        this.state.stats.hp = this.state.player.hp;
+        this.addMessage(`A magical bolt strikes you for ${dmg}!`);
+        this.updateStatsUI();
+        if (this.state.player.hp <= 0) { this.state.dead = true; this.showGameOver("a magical bolt"); }
+        continue;
+      }
+
+      alive.push({ ...proj, x: nx, y: ny });
+    }
+
+    this.state.projectiles = alive;
   }
 
   // ── Main update ──────────────────────────────────────────────────
@@ -761,6 +823,7 @@ export class GameController {
       this.combat(enemyIdx);
       this.refreshFOV();
       this.moveEnemies();
+      this.moveProjectiles();
       return;
     }
 
@@ -846,6 +909,7 @@ export class GameController {
       }
       if (this.state.maps[target]) {
         this.state.currentMapId = target;
+        this.state.projectiles = [];
         const inst = this.state.maps[target];
         const spawn = findSpawn(inst.map, inst.entities, tx, ty);
         this.state.player.x = spawn.x;
@@ -883,6 +947,7 @@ export class GameController {
 
     this.refreshFOV();
     this.moveEnemies();
+    this.moveProjectiles();
   }
 
   // ── Combat ───────────────────────────────────────────────────────

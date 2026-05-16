@@ -105,6 +105,28 @@ export class Renderer {
     const px = (state.player.x - camX) * ts;
     const py = (state.player.y - camY) * ts;
     this.spriteSheet.draw(this.ctx, state.player.sprite, px, py, ts);
+
+    // Draw projectiles
+    for (const proj of state.projectiles) {
+      const sx = (proj.x - camX) * ts + ts / 2;
+      const sy = (proj.y - camY) * ts + ts / 2;
+      const r = Math.max(3, Math.floor(ts / 6));
+      // Glow
+      this.ctx.fillStyle = "rgba(180, 80, 255, 0.25)";
+      this.ctx.beginPath();
+      this.ctx.arc(sx, sy, r * 2.5, 0, Math.PI * 2);
+      this.ctx.fill();
+      // Core
+      this.ctx.fillStyle = "#cc44ff";
+      this.ctx.beginPath();
+      this.ctx.arc(sx, sy, r, 0, Math.PI * 2);
+      this.ctx.fill();
+      // Bright centre
+      this.ctx.fillStyle = "#ffffff";
+      this.ctx.beginPath();
+      this.ctx.arc(sx, sy, Math.max(1, r - 2), 0, Math.PI * 2);
+      this.ctx.fill();
+    }
   }
 
   private renderMapOverview(state: GameState): void {
