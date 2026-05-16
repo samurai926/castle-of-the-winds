@@ -132,6 +132,12 @@ export class GameController {
     this.updateStatsUI();
     this.updateInventoryUI();
     this.refreshFOV();
+    // Projectiles advance on a real-time tick independent of player turns
+    setInterval(() => {
+      if (this.state.started && !this.state.dead && !this.anyModalOpen()) {
+        this.moveProjectiles();
+      }
+    }, 500);
     this.loop();
   }
 
@@ -835,7 +841,6 @@ export class GameController {
       this.combat(enemyIdx);
       this.refreshFOV();
       this.moveEnemies();
-      this.moveProjectiles();
       return;
     }
 
@@ -959,7 +964,6 @@ export class GameController {
 
     this.refreshFOV();
     this.moveEnemies();
-    this.moveProjectiles();
   }
 
   // ── Combat ───────────────────────────────────────────────────────
