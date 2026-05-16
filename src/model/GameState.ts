@@ -8,6 +8,7 @@ export interface Projectile {
   dx: number;
   dy: number;
   damage: number;
+  ownerId: string; // `${wizard.x},${wizard.y}` — one bolt per wizard
 }
 
 export type EntityType =

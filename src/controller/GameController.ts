@@ -713,7 +713,7 @@ export class GameController {
     for (const enemy of entities) {
       if (enemy.type !== "enemy" || !enemy.aware) continue;
 
-      // ── Ranged (wizard) — fires every turn, never charges ──────────
+      // ── Ranged (wizard) — one bolt in flight at a time, never charges ─
       if (enemy.rangedAtk !== undefined) {
         const ddx = Math.sign(px - enemy.x);
         const ddy = Math.sign(py - enemy.y);
@@ -721,15 +721,19 @@ export class GameController {
         const stepX = enemy.x + ddx, stepY = enemy.y + ddy;
 
         if (stepX === px && stepY === py) {
-          // Point-blank zap
+          // Point-blank zap (adjacent)
           const dmg = Math.max(1, enemy.rangedAtk - this.playerTotalDef());
           this.state.player.hp = (this.state.player.hp ?? 0) - dmg;
           this.state.stats.hp = this.state.player.hp;
           this.addMessage(`${enemy.name ?? "Wizard"} zaps you point-blank for ${dmg}!`);
           this.updateStatsUI();
           if (this.state.player.hp <= 0) { this.state.dead = true; this.showGameOver(enemy.name ?? "a wizard"); }
-        } else if (!map.isSolid(stepX, stepY)) {
-          this.state.projectiles.push({ x: stepX, y: stepY, dx: ddx, dy: ddy, damage: enemy.rangedAtk });
+        } else {
+          const ownerId = `${enemy.x},${enemy.y}`;
+          const alreadyFired = this.state.projectiles.some(p => p.ownerId === ownerId);
+          if (!alreadyFired && !map.isSolid(stepX, stepY)) {
+            this.state.projectiles.push({ x: stepX, y: stepY, dx: ddx, dy: ddy, damage: enemy.rangedAtk, ownerId });
+          }
         }
         continue;
       }
