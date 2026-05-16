@@ -51,6 +51,7 @@ export interface Entity {
   isFinalItem?: boolean;
   isWand?: boolean;
   shootCooldown?: number;
+  uid?: string;
   behavior?: {
     dialogue?: string;
     targetMap?: string;

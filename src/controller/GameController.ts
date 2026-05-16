@@ -182,8 +182,8 @@ export class GameController {
     // Projectiles advance on a real-time tick independent of player turns
     setInterval(() => {
       if (this.state.started && !this.state.dead && !this.anyModalOpen()) {
-        this.wizardsFire();
         this.moveProjectiles();
+        this.wizardsFire();
       }
     }, 750);
     // Timer display — update every second
@@ -994,6 +994,13 @@ export class GameController {
       // Cooldown — decrement and skip if still cooling
       if ((enemy.shootCooldown ?? 0) > 0) { enemy.shootCooldown!--; continue; }
 
+      // Stable per-wizard ID (position-based ownerId breaks on movement)
+      if (!enemy.uid) enemy.uid = Math.random().toString(36).slice(2);
+      const ownerId = `w_${enemy.uid}`;
+
+      // Only 1 active bolt per wizard
+      if (this.state.projectiles.some(p => p.ownerId === ownerId)) continue;
+
       const dx = px - enemy.x, dy = py - enemy.y;
       if (dx === 0 && dy === 0) continue;
 
@@ -1013,11 +1020,8 @@ export class GameController {
         enemy.shootCooldown = 2;
         if (this.state.player.hp <= 0) { this.state.dead = true; this.showGameOver(enemy.name ?? "a wizard"); }
       } else {
-        const ownerId = `${enemy.x},${enemy.y}`;
-        if (!this.state.projectiles.some(p => p.ownerId === ownerId)) {
-          this.state.projectiles.push({ x: stepX, y: stepY, dx: ddx, dy: ddy, damage: enemy.rangedAtk, ownerId });
-          enemy.shootCooldown = 2;
-        }
+        this.state.projectiles.push({ x: stepX, y: stepY, dx: ddx, dy: ddy, damage: enemy.rangedAtk, ownerId });
+        enemy.shootCooldown = 2;
       }
     }
   }
