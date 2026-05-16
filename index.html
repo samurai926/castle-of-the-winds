@@ -275,6 +275,14 @@
       font-size: 13px; color: #80a8ff; margin-bottom: 36px;
     }
 
+    #start-lore {
+      position: absolute; bottom: 32px;
+      font-size: 11px; color: rgba(160,180,255,0.75);
+      font-style: italic; text-align: center;
+      max-width: 420px; min-height: 1.4em;
+      transition: opacity 0.4s;
+    }
+
     .start-card {
       background: #c0c0c0;
       border-top: 2px solid #fff; border-left: 2px solid #fff;
@@ -328,6 +336,7 @@
       <input id="start-name-input" type="text" maxlength="24" value="Adventurer" />
       <button id="start-play">Play</button>
     </div>
+    <div id="start-lore"></div>
   </div>
 
   <!-- ═══ GAME WINDOW ═══ -->

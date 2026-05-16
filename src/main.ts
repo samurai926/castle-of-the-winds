@@ -70,6 +70,16 @@ async function bootstrap() {
     projectiles: [],
   };
 
+  // Restart shortcut: skip title screen, reuse saved name
+  const autoName = sessionStorage.getItem("autostart");
+  if (autoName !== null) {
+    sessionStorage.removeItem("autostart");
+    state.playerName = autoName || "Adventurer";
+    state.started = true;
+    const ss = document.getElementById("start-screen");
+    if (ss) ss.style.display = "none";
+  }
+
   const checkReady = setInterval(() => {
     if (sprites.isLoaded()) {
       clearInterval(checkReady);

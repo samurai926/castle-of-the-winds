@@ -76,6 +76,27 @@ export class GameController {
     document.getElementById("modal-close")?.addEventListener("click", () => this.closeInventory());
     document.getElementById("shop-close")?.addEventListener("click", () => this.closeShop());
 
+    // Start screen right-click lore
+    document.getElementById("start-screen")?.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      const lore = [
+        "Three expeditions entered the caves. One returned. It didn't speak of the others.",
+        "The archmage's library was found empty. The books had walked themselves out.",
+        "Workers who carved the deepest chambers refused to return to the surface. Their tools were found arranged in a perfect circle.",
+        "The winds that howl through the lower halls smell faintly of burnt parchment and old regret.",
+        "The name 'Castle of the Winds' was given by survivors. No one agrees on what it was called before, or in what language.",
+        "The stones in the lowest chambers are warm to the touch. No geologist has offered an explanation.",
+        "A merchant once claimed to have sold candles to a figure deep in the caves. The coins he received dissolved by dawn.",
+        "Local legend says the castle predates the town by four centuries. Local legend says this quietly, and only once.",
+        "The dungeon redraws itself between visits. Cartographers have stopped trying.",
+        "Guards stationed at the cave entrance are rotated weekly. Those who stay longer stop blinking as much.",
+        "Items left in the dungeon overnight are sometimes moved. Never taken. Just moved.",
+        "The boss on the final level has a name. No one who learned it came back to share it.",
+      ];
+      const loreEl = document.getElementById("start-lore");
+      if (loreEl) loreEl.textContent = lore[Math.floor(Math.random() * lore.length)];
+    });
+
     // Start screen
     document.getElementById("start-play")?.addEventListener("click", () => {
       const inp = document.getElementById("start-name-input") as HTMLInputElement;
@@ -92,7 +113,10 @@ export class GameController {
     // Main menu
     document.getElementById("mm-resume")?.addEventListener("click", () => this.closeMainMenu());
     document.getElementById("mm-rest")?.addEventListener("click", () => this.rest());
-    document.getElementById("mm-restart")?.addEventListener("click", () => location.reload());
+    document.getElementById("mm-restart")?.addEventListener("click", () => {
+      sessionStorage.setItem("autostart", this.state.playerName);
+      location.reload();
+    });
     document.getElementById("mm-quit")?.addEventListener("click", () => location.reload());
 
     // Debug
@@ -835,9 +859,6 @@ export class GameController {
       const dx = px - enemy.x, dy = py - enemy.y;
       if (dx === 0 && dy === 0) continue;
 
-      // Only fire along cardinal or 45° diagonal — bolt must reach player's exact tile
-      if (dx !== 0 && dy !== 0 && Math.abs(dx) !== Math.abs(dy)) continue;
-
       const ddx = Math.sign(dx), ddy = Math.sign(dy);
 
       // Line-of-sight: walk from wizard to player, abort if any solid tile or blocking entity
@@ -864,10 +885,14 @@ export class GameController {
 
   private wizardHasLoS(wx: number, wy: number, px: number, py: number, ddx: number, ddy: number): boolean {
     const map = currentMap(this.state);
+    // FOV is the source of truth for wall/terrain LoS — if wizard tile is visible, no walls block
+    if (!map.isVisible(wx, wy)) return false;
+    // Walk bolt path for entity blockers (enemies, NPCs obstruct the shot)
     const entities = currentEntities(this.state);
     let cx = wx + ddx, cy = wy + ddy;
-    while (cx !== px || cy !== py) {
+    for (let i = 0; i < 15; i++) {
       if (map.isSolid(cx, cy)) return false;
+      if (cx === px && cy === py) return true;
       if (entities.some(e => e.x === cx && e.y === cy &&
           (e.type === "enemy" || e.type === "npc" || e.type === "building"))) return false;
       cx += ddx; cy += ddy;
