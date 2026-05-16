@@ -68,6 +68,11 @@ async function bootstrap() {
     helpOpen: false,
     mapPreviewMeta: null,
     projectiles: [],
+    killCounts: {},
+    totalDamageTaken: 0,
+    secretsFound: 0,
+    won: false,
+    startTime: 0,
   };
 
   // Restart shortcut: skip title screen, reuse saved name

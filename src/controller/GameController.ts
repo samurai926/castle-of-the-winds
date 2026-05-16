@@ -11,7 +11,7 @@ import { InputHandler } from "./InputHandler";
 import { Renderer } from "../view/Renderer";
 import { computeFOV } from "../model/fov";
 import { SHOPS, ShopItem } from "../data/shopData";
-import { generateDungeon, findSpawn, DungeonSize, DungeonDifficulty } from "../data/dungeonGenerator";
+import { generateDungeon, findSpawn, DungeonSize, DungeonDifficulty, FINAL_LEVEL } from "../data/dungeonGenerator";
 
 const SLOTS: EquipSlot[] = ["weapon", "shield", "armor", "head"];
 const FOV_RADIUS = 6;
@@ -40,6 +40,7 @@ export class GameController {
   private dungeonMeta: Record<string, { size: DungeonSize; diff: DungeonDifficulty }> = {};
   private killMode = false;
   private spawnMode = false;
+  private fireMode = false;
   private levelUpOpen = false;
 
   private readonly SPAWN_CATALOG: Record<string, Partial<Entity> & { sprite: string; name: string; hp: number; atk: number }> = {
@@ -52,9 +53,10 @@ export class GameController {
     "Demon":         { sprite:"demon",    name:"Demon",                 hp:20, maxHp:20, atk:5, def:2, xpReward:80  },
     "Gargoyle":      { sprite:"sphinx",   name:"Gargoyle",              hp:12, maxHp:12, atk:4, def:2, xpReward:60  },
     "Void Mage":     { sprite:"villager", name:"Void Mage",             hp:20, maxHp:20, atk:0, def:2, xpReward:100, rangedAtk:15 },
-    "Cave Troll":    { sprite:"cyclops",  name:"Cave Troll [BOSS]",     hp:30, maxHp:30, atk:4, def:2, xpReward:120 },
-    "Dungeon Lord":  { sprite:"demon",    name:"Dungeon Lord [BOSS]",   hp:55, maxHp:55, atk:6, def:4, xpReward:300 },
-    "Void Archdemon":{ sprite:"sphinx",   name:"Void Archdemon [BOSS]", hp:90, maxHp:90, atk:9, def:6, xpReward:600 },
+    "Cave Troll":    { sprite:"cyclops",  name:"Cave Troll [BOSS]",     hp:30,  maxHp:30,  atk:4,  def:2, xpReward:120  },
+    "Dungeon Lord":  { sprite:"demon",    name:"Dungeon Lord [BOSS]",   hp:55,  maxHp:55,  atk:6,  def:4, xpReward:300  },
+    "Void Archdemon":{ sprite:"sphinx",   name:"Void Archdemon [BOSS]", hp:90,  maxHp:90,  atk:9,  def:6, xpReward:600  },
+    "The Archmage":  { sprite:"sphinx",   name:"The Archmage [BOSS]",   hp:150, maxHp:150, atk:12, def:8, xpReward:2000 },
   };
   private levelUpBaseStats: { str: number; int: number; con: number; dex: number; statPoints: number } | null = null;
   private canvas: HTMLCanvasElement;
@@ -107,6 +109,7 @@ export class GameController {
 
     // Menu bar
     document.getElementById("btn-main-menu")?.addEventListener("click", () => this.openMainMenu());
+    document.getElementById("btn-inventory")?.addEventListener("click", () => this.toggleInventory());
     document.getElementById("btn-map")?.addEventListener("click", () => this.toggleMap());
     document.getElementById("btn-debug")?.addEventListener("click", () => this.openDebugMenu());
 
@@ -129,6 +132,8 @@ export class GameController {
     document.getElementById("dbg-gen-btn")?.addEventListener("click", () => this.debugGenDungeon());
     document.getElementById("dbg-preview-btn")?.addEventListener("click", () => this.debugPreviewDungeon());
     document.getElementById("dbg-spawn-btn")?.addEventListener("click", () => this.debugEnterSpawnMode());
+    document.getElementById("dbg-goto-final-btn")?.addEventListener("click", () => this.debugGotoFinal());
+    document.getElementById("dbg-win-btn")?.addEventListener("click", () => this.debugWinGame());
     document.getElementById("dbg-close")?.addEventListener("click", () => this.closeDebugMenu());
 
     // Level-up modal
@@ -166,6 +171,7 @@ export class GameController {
   }
 
   start(): void {
+    this.state.startTime = Date.now();
     this.addMessage("WASD/arrows = move. I = inventory. M = map. ? = Help.");
     this.addMessage("Walk onto items to pick up. Right-click anything to examine it.");
     this.addMessage("Equip a weapon, then bump enemies to attack.");
@@ -180,6 +186,13 @@ export class GameController {
         this.moveProjectiles();
       }
     }, 750);
+    // Timer display — update every second
+    setInterval(() => {
+      if (this.state.started && !this.state.dead && !this.state.won) {
+        const el = document.getElementById("stat-time");
+        if (el) el.textContent = this.formatTime(Date.now() - this.state.startTime);
+      }
+    }, 1000);
     this.loop();
   }
 
@@ -197,7 +210,8 @@ export class GameController {
       this.state.mapMode ||
       this.state.shopOpen ||
       this.levelUpOpen ||
-      this.state.helpOpen
+      this.state.helpOpen ||
+      this.state.won
     );
   }
 
@@ -224,6 +238,12 @@ export class GameController {
         this.spawnMode = false;
         this.canvas.style.cursor = "";
         this.addMessage("[DEBUG] Spawn mode cancelled.");
+        return;
+      }
+      if (this.fireMode) {
+        this.fireMode = false;
+        this.canvas.style.cursor = "";
+        this.addMessage("Fire cancelled.");
         return;
       }
       if (this.state.inventoryOpen) { this.closeInventory(); return; }
@@ -257,6 +277,21 @@ export class GameController {
     if (e.key === "?" || e.key === "/") {
       e.preventDefault();
       this.toggleHelp();
+      return;
+    }
+    if ((e.key === "f" || e.key === "F") && !this.anyModalOpen()) {
+      e.preventDefault();
+      if (this.fireMode) {
+        this.fireMode = false;
+        this.canvas.style.cursor = "";
+        this.addMessage("Fire cancelled.");
+      } else if (this.state.equipped.weapon?.isWand) {
+        this.fireMode = true;
+        this.canvas.style.cursor = "crosshair";
+        this.addMessage("Fire bolt — click target or use WASD/QEZC. F or ESC to cancel.");
+      } else {
+        this.addMessage("No wand equipped.");
+      }
       return;
     }
   }
@@ -406,7 +441,7 @@ export class GameController {
     this.dungeonDiff = (document.getElementById("dbg-dung-diff") as HTMLSelectElement).value as DungeonDifficulty;
     this.dungeonCount++;
     const mapId = `dungeon_${this.dungeonCount}`;
-    const nextId = `dungeon_${this.dungeonCount + 1}`;
+    const nextId = this.dungeonCount >= FINAL_LEVEL ? null : `dungeon_${this.dungeonCount + 1}`;
     const inst = generateDungeon(this.dungeonSize, this.dungeonDiff, this.dungeonCount, "town", 9, 15, nextId);
     this.state.maps[mapId] = inst;
     this.dungeonMeta[mapId] = { size: this.dungeonSize, diff: this.dungeonDiff };
@@ -442,8 +477,10 @@ export class GameController {
         });
       }
     }
+    // Drop-only items not in any shop
+    this.state.inventory.push({ x:0, y:0, type:"item", sprite:"magic_gem", name:"Wand of Bolts", slot:"weapon", isWand:true, price:150 });
     this.updateInventoryUI();
-    this.addMessage(`[DEBUG] Added all shop items to inventory.`);
+    this.addMessage(`[DEBUG] Added all items to inventory.`);
   }
 
   private debugJump(): void {
@@ -451,12 +488,14 @@ export class GameController {
     const mapId = sel.value;
     if (!mapId || !this.state.maps[mapId]) return;
     this.state.currentMapId = mapId;
+    this.state.projectiles = [];
     const inst = this.state.maps[mapId];
     const preferred = MAP_SPAWNS[mapId] ?? { x: 3, y: 3 };
     const spawn = findSpawn(inst.map, inst.entities, preferred.x, preferred.y);
     this.state.player.x = spawn.x;
     this.state.player.y = spawn.y;
     this.refreshFOV();
+    this.updateStatsUI();
     this.addMessage(`[DEBUG] Jumped to ${mapId}.`);
     this.closeDebugMenu();
   }
@@ -491,6 +530,32 @@ export class GameController {
     this.showGameOver("[DEBUG] command");
   }
 
+  private debugWinGame(): void {
+    this.closeDebugMenu();
+    this.state.won = true;
+    this.showVictory();
+  }
+
+  private debugGotoFinal(): void {
+    const mapId = `dungeon_${FINAL_LEVEL}`;
+    if (!this.state.maps[mapId]) {
+      const prevId = this.state.currentMapId;
+      const inst = generateDungeon("large", "ultra", FINAL_LEVEL, prevId, 3, 4, null);
+      this.state.maps[mapId] = inst;
+      this.dungeonMeta[mapId] = { size: "large", diff: "ultra" };
+    }
+    this.state.currentMapId = mapId;
+    this.state.projectiles = [];
+    const inst = this.state.maps[mapId];
+    const spawn = findSpawn(inst.map, inst.entities, 3, 4);
+    this.state.player.x = spawn.x;
+    this.state.player.y = spawn.y;
+    this.refreshFOV();
+    this.updateStatsUI();
+    this.addMessage(`[DEBUG] Jumped to final level (dungeon_${FINAL_LEVEL}).`);
+    this.closeDebugMenu();
+  }
+
   private onCanvasClick(e: MouseEvent): void {
     if (!this.state.started) return;
     const rect = this.canvas.getBoundingClientRect();
@@ -522,6 +587,38 @@ export class GameController {
     const camY = Math.floor(this.state.player.y - Math.floor(this.renderer.viewportTilesY / 2));
     const tileX = camX + Math.floor(px / ts);
     const tileY = camY + Math.floor(py / ts);
+
+    // Fire mode: click to fire bolt toward clicked tile (8-directional)
+    if (this.fireMode) {
+      this.fireMode = false;
+      this.canvas.style.cursor = "";
+      const plx = this.state.player.x, ply = this.state.player.y;
+      if (tileX === plx && tileY === ply) { this.addMessage("Fire cancelled."); return; }
+      const s = this.state.stats;
+      const mpCost = 4;
+      if (s.mp < mpCost) { this.addMessage("Not enough mana to fire!"); return; }
+      const dirX = Math.sign(tileX - plx);
+      const dirY = Math.sign(tileY - ply);
+      const fireX = plx + dirX, fireY = ply + dirY;
+      const map = currentMap(this.state);
+      if (map.isSolid(fireX, fireY)) { this.addMessage("The bolt fizzles into the wall."); return; }
+      s.mp -= mpCost;
+      const boltDmg = 3 + Math.floor(Math.max(0, s.int - 10));
+      const entities = currentEntities(this.state);
+      const adjIdx = entities.findIndex(en => en.x === fireX && en.y === fireY && en.type === "enemy");
+      if (adjIdx !== -1) {
+        this.applyWandHit(adjIdx, boltDmg);
+        this.updateStatsUI();
+        this.refreshFOV();
+        this.moveEnemies();
+        return;
+      }
+      this.state.projectiles.push({ x: fireX, y: fireY, dx: dirX, dy: dirY, damage: boltDmg, ownerId: "player", fromPlayer: true });
+      this.addMessage(`You fire a bolt. (MP: ${s.mp}/${s.maxMp})`);
+      this.updateStatsUI();
+      this.moveEnemies();
+      return;
+    }
 
     // Kill mode: click to kill enemy in normal view
     if (this.killMode) {
@@ -643,11 +740,14 @@ export class GameController {
       }
       case "item": {
         const parts: string[] = [entity.name ?? entity.sprite];
-        if (entity.atk)     parts.push(`+${entity.atk} ATK`);
-        if (entity.def)     parts.push(`+${entity.def} DEF`);
-        if (entity.healAmt) parts.push(`+${entity.healAmt} HP`);
-        if (entity.boostStat && entity.boostAmt) parts.push(`+${entity.boostAmt} ${entity.boostStat.toUpperCase()}`);
-        if (entity.slot)    parts.push(`[${entity.slot}]`);
+        if (entity.isWand)  parts.push(`bolt:${3 + Math.floor(Math.max(0, this.state.stats.int - 10))} (INT-scaled)  4 MP/shot  [weapon]`);
+        else {
+          if (entity.atk)     parts.push(`+${entity.atk} ATK`);
+          if (entity.def)     parts.push(`+${entity.def} DEF`);
+          if (entity.healAmt) parts.push(`+${entity.healAmt} HP`);
+          if (entity.boostStat && entity.boostAmt) parts.push(`+${entity.boostAmt} ${entity.boostStat.toUpperCase()}`);
+          if (entity.slot)    parts.push(`[${entity.slot}]`);
+        }
         return parts.join("  ");
       }
       case "chest": {
@@ -720,18 +820,25 @@ export class GameController {
 
     const sellEl = document.getElementById("shop-sell")!;
     sellEl.innerHTML = "";
-    if (this.state.inventory.length === 0) {
-      sellEl.textContent = "(nothing to sell)";
+    const GEAR_SLOTS = new Set(["weapon","armor","shield","head"]);
+    const isBlacksmith = shopId === "blacksmith";
+    const sellable = this.state.inventory.filter(it => !isBlacksmith || (it.slot && GEAR_SLOTS.has(it.slot)));
+    if (sellable.length === 0) {
+      sellEl.textContent = isBlacksmith ? "(no gear to sell)" : "(nothing to sell)";
       return;
     }
     this.state.inventory.forEach((item, i) => {
+      const isGear = item.slot && GEAR_SLOTS.has(item.slot);
+      if (isBlacksmith && !isGear) return;
+      const sellPrice = isBlacksmith
+        ? (item.price ? Math.floor(item.price / 2) : 5)
+        : (item.price ? Math.floor(item.price * (isGear ? 0.25 : 0.5)) : 5);
       const row = document.createElement("div");
       row.className = "bag-row";
       const nameEl = document.createElement("span");
       nameEl.style.flex = "1";
       nameEl.textContent = item.name ?? item.sprite;
       row.appendChild(nameEl);
-      const sellPrice = item.price ? Math.floor(item.price / 2) : 5;
       const priceEl = document.createElement("span");
       priceEl.style.marginRight = "6px";
       priceEl.textContent = `${sellPrice}g`;
@@ -770,7 +877,15 @@ export class GameController {
   private sellItem(inventoryIdx: number): void {
     const item = this.state.inventory[inventoryIdx];
     if (!item) return;
-    const sellPrice = item.price ? Math.floor(item.price / 2) : 5;
+    const shopId = this.state.activeShopId!;
+    const isGear = item.slot && ["weapon","armor","shield","head"].includes(item.slot);
+    if (shopId === "blacksmith" && !isGear) {
+      this.addMessage("Blacksmith only buys weapons and armor.");
+      return;
+    }
+    const sellPrice = shopId === "blacksmith"
+      ? (item.price ? Math.floor(item.price / 2) : 5)
+      : (item.price ? Math.floor(item.price * (isGear ? 0.25 : 0.5)) : 5);
     this.state.inventory.splice(inventoryIdx, 1);
     this.state.gold += sellPrice;
     this.addMessage(`Sold ${item.name ?? "item"} for ${sellPrice}g.`);
@@ -819,8 +934,28 @@ export class GameController {
     for (const enemy of entities) {
       if (enemy.type !== "enemy" || !enemy.aware) continue;
 
-      // Ranged enemies never charge — firing handled on real-time tick
-      if (enemy.rangedAtk !== undefined) continue;
+      // ── Ranged — reposition to align for clear shot ────────────────
+      if (enemy.rangedAtk !== undefined) {
+        const rdx = px - enemy.x, rdy = py - enemy.y;
+        // Already aligned on an axis — stay and fire
+        if (rdx === 0 || rdy === 0) continue;
+        // 50% chance to skip movement this turn
+        if (Math.random() < 0.5) continue;
+        // Try to close the smaller gap to achieve axis alignment
+        const moveCandidates: [number, number][] = Math.abs(rdx) <= Math.abs(rdy)
+          ? [[Math.sign(rdx), 0], [0, Math.sign(rdy)]]
+          : [[0, Math.sign(rdy)], [Math.sign(rdx), 0]];
+        for (const [mx, my] of moveCandidates) {
+          const nx = enemy.x + mx, ny = enemy.y + my;
+          if (map.isSolid(nx, ny)) continue;
+          if (nx === px && ny === py) continue;
+          const blocked = entities.some(e => e !== enemy && e.x === nx && e.y === ny && (e.type === "enemy" || e.type === "npc"));
+          if (blocked) continue;
+          enemy.x = nx; enemy.y = ny;
+          break;
+        }
+        continue;
+      }
 
       // ── Melee — charge player ───────────────────────────────────────
       if (Math.random() < 0.4) continue;
@@ -856,28 +991,32 @@ export class GameController {
     for (const enemy of entities) {
       if (enemy.type !== "enemy" || enemy.rangedAtk === undefined || !enemy.aware) continue;
 
+      // Cooldown — decrement and skip if still cooling
+      if ((enemy.shootCooldown ?? 0) > 0) { enemy.shootCooldown!--; continue; }
+
       const dx = px - enemy.x, dy = py - enemy.y;
       if (dx === 0 && dy === 0) continue;
 
       const ddx = Math.sign(dx), ddy = Math.sign(dy);
 
-      // Line-of-sight: walk from wizard to player, abort if any solid tile or blocking entity
       if (!this.wizardHasLoS(enemy.x, enemy.y, px, py, ddx, ddy)) continue;
 
       const stepX = enemy.x + ddx, stepY = enemy.y + ddy;
 
       if (stepX === px && stepY === py) {
-        // Adjacent — direct zap
         const dmg = Math.max(1, enemy.rangedAtk - this.playerTotalDef());
         this.state.player.hp = (this.state.player.hp ?? 0) - dmg;
         this.state.stats.hp = this.state.player.hp;
+        this.state.totalDamageTaken += dmg;
         this.addMessage(`${enemy.name ?? "Wizard"} zaps you point-blank for ${dmg}!`);
         this.updateStatsUI();
+        enemy.shootCooldown = 2;
         if (this.state.player.hp <= 0) { this.state.dead = true; this.showGameOver(enemy.name ?? "a wizard"); }
       } else {
         const ownerId = `${enemy.x},${enemy.y}`;
         if (!this.state.projectiles.some(p => p.ownerId === ownerId)) {
           this.state.projectiles.push({ x: stepX, y: stepY, dx: ddx, dy: ddy, damage: enemy.rangedAtk, ownerId });
+          enemy.shootCooldown = 2;
         }
       }
     }
@@ -913,7 +1052,33 @@ export class GameController {
 
       if (map.isSolid(nx, ny)) continue;
 
-      // Blocked by any solid entity (not items/treasure/portals)
+      if (proj.fromPlayer) {
+        // Player bolt — check enemy hit
+        const hitIdx = entities.findIndex(e => e.x === nx && e.y === ny && e.type === "enemy");
+        if (hitIdx !== -1) {
+          const enemy = entities[hitIdx];
+          const dmg = Math.max(1, proj.damage - (enemy.def ?? 0));
+          enemy.hp = (enemy.hp ?? 1) - dmg;
+          this.addMessage(`Your bolt hits ${enemy.name ?? "enemy"} for ${dmg}!`);
+          this.updateStatsUI();
+          if (enemy.hp <= 0) {
+            this.addMessage(`${enemy.name ?? "Enemy"} dies!`);
+            const cleanName = (enemy.name ?? "Unknown").replace(/\s*\[BOSS\]\s*/, "").trim();
+            this.state.killCounts[cleanName] = (this.state.killCounts[cleanName] ?? 0) + 1;
+            if (enemy.loot && enemy.loot.length > 0) {
+              for (const drop of enemy.loot) { drop.x = enemy.x; drop.y = enemy.y; entities.push(drop); }
+              this.addMessage("It drops loot.");
+            }
+            entities.splice(hitIdx, 1);
+            if (enemy.xpReward) this.grantXp(enemy.xpReward);
+          }
+          continue; // bolt absorbed
+        }
+        alive.push({ ...proj, x: nx, y: ny });
+        continue;
+      }
+
+      // Enemy bolt — blocked by solid entities
       const blocked = entities.some(e =>
         e.x === nx && e.y === ny &&
         e.type !== "item" && e.type !== "treasure" && e.type !== "portal" && e.type !== "door"
@@ -924,6 +1089,7 @@ export class GameController {
         const dmg = Math.max(1, proj.damage - this.playerTotalDef());
         this.state.player.hp = (this.state.player.hp ?? 0) - dmg;
         this.state.stats.hp = this.state.player.hp;
+        this.state.totalDamageTaken += dmg;
         this.addMessage(`A magical bolt strikes you for ${dmg}!`);
         this.updateStatsUI();
         if (this.state.player.hp <= 0) { this.state.dead = true; this.showGameOver("a magical bolt"); }
@@ -940,8 +1106,44 @@ export class GameController {
 
   private update(): void {
     if (!this.state.started) return;
-    if (this.anyModalOpen()) return;
     if (this.state.dead) return;
+    if (this.anyModalOpen()) {
+      if (this.fireMode) { this.fireMode = false; this.canvas.style.cursor = ""; }
+      return;
+    }
+
+    // Fire mode: next directional key fires a wand bolt
+    if (this.fireMode) {
+      const move = this.input.consumeMove();
+      if (!move) return;
+      this.fireMode = false;
+      this.canvas.style.cursor = "";
+      const s = this.state.stats;
+      const mpCost = 4;
+      if (s.mp < mpCost) { this.addMessage("Not enough mana to fire!"); return; }
+      const fireX = this.state.player.x + move.dx;
+      const fireY = this.state.player.y + move.dy;
+      const map = currentMap(this.state);
+      const entities = currentEntities(this.state);
+      if (map.isSolid(fireX, fireY)) { this.addMessage("The bolt fizzles into the wall."); return; }
+      s.mp -= mpCost;
+      const boltDmg = 3 + Math.floor(Math.max(0, s.int - 10));
+      // Adjacent enemy — instant hit (MP already deducted above)
+      const adjIdx = entities.findIndex(e => e.x === fireX && e.y === fireY && e.type === "enemy");
+      if (adjIdx !== -1) {
+        this.applyWandHit(adjIdx, boltDmg);
+        this.updateStatsUI();
+        this.refreshFOV();
+        this.moveEnemies();
+        return;
+      }
+      // Non-adjacent — traveling projectile
+      this.state.projectiles.push({ x: fireX, y: fireY, dx: move.dx, dy: move.dy, damage: boltDmg, ownerId: "player", fromPlayer: true });
+      this.addMessage(`You fire a bolt. (MP: ${s.mp}/${s.maxMp})`);
+      this.updateStatsUI();
+      this.moveEnemies();
+      return;
+    }
 
     const move = this.input.consumeMove();
     if (!move) return;
@@ -959,9 +1161,8 @@ export class GameController {
       (e) => e.x === newX && e.y === newY && e.type === "enemy"
     );
     if (enemyIdx !== -1) {
-      this.combat(enemyIdx);
-      this.refreshFOV();
-      this.moveEnemies();
+      const acted = this.combat(enemyIdx);
+      if (acted) { this.refreshFOV(); this.moveEnemies(); }
       return;
     }
 
@@ -1039,11 +1240,14 @@ export class GameController {
         const prevId = this.state.currentMapId;
         const returnX = this.state.player.x;
         const returnY = this.state.player.y;
-        const nextId = `dungeon_${levelNum + 1}`;
-        const inst = generateDungeon(this.dungeonSize, this.dungeonDiff, levelNum, prevId, returnX, returnY, nextId);
+        const { size, diff } = this.levelSizeDiff(levelNum);
+        const nextId = levelNum >= FINAL_LEVEL ? null : `dungeon_${levelNum + 1}`;
+        const inst = generateDungeon(size, diff, levelNum, prevId, returnX, returnY, nextId);
         this.state.maps[target] = inst;
-        this.dungeonMeta[target] = { size: this.dungeonSize, diff: this.dungeonDiff };
-        this.addMessage(`You descend to dungeon level ${levelNum}.`);
+        this.dungeonMeta[target] = { size, diff };
+        this.addMessage(levelNum >= FINAL_LEVEL
+          ? "You descend into the archmage's sanctum. There is no going deeper."
+          : `You descend to dungeon level ${levelNum} (${size}/${diff}).`);
       }
       if (this.state.maps[target]) {
         this.state.currentMapId = target;
@@ -1054,6 +1258,7 @@ export class GameController {
         this.state.player.y = spawn.y;
         this.addMessage(`You enter ${portal.name ?? "the portal"}.`);
         this.refreshFOV();
+        this.updateStatsUI();
         return;
       }
     }
@@ -1081,6 +1286,10 @@ export class GameController {
       this.state.inventory.push(item);
       this.addMessage(`You pick up ${item.name ?? "an item"}.`);
       this.updateInventoryUI();
+      if (item.isFinalItem) {
+        this.state.won = true;
+        this.showVictory();
+      }
     }
 
     this.refreshFOV();
@@ -1103,10 +1312,13 @@ export class GameController {
     );
   }
 
-  private combat(enemyIdx: number): void {
+  private combat(enemyIdx: number): boolean {
     const entities = currentEntities(this.state);
     const enemy = entities[enemyIdx];
     const weapon = this.state.equipped.weapon;
+
+    if (weapon?.isWand) return this.wandAttack(enemyIdx);
+
     const dmg = Math.max(1, this.playerTotalAtk() - (enemy.def ?? 0));
     const weaponName = weapon ? (weapon.name ?? "weapon") : "fists";
 
@@ -1115,12 +1327,10 @@ export class GameController {
 
     if (enemy.hp <= 0) {
       this.addMessage(`${enemy.name ?? "Enemy"} dies!`);
-      if (enemy.loot) {
-        for (const drop of enemy.loot) {
-          drop.x = enemy.x;
-          drop.y = enemy.y;
-          entities.push(drop);
-        }
+      const cleanName = (enemy.name ?? "Unknown").replace(/\s*\[BOSS\]\s*/, "").trim();
+      this.state.killCounts[cleanName] = (this.state.killCounts[cleanName] ?? 0) + 1;
+      if (enemy.loot && enemy.loot.length > 0) {
+        for (const drop of enemy.loot) { drop.x = enemy.x; drop.y = enemy.y; entities.push(drop); }
         this.addMessage(`It drops loot.`);
       }
       entities.splice(enemyIdx, 1);
@@ -1132,6 +1342,7 @@ export class GameController {
     const player = this.state.player;
     player.hp = (player.hp ?? 0) - retDmg;
     this.state.stats.hp = player.hp;
+    this.state.totalDamageTaken += retDmg;
     this.addMessage(`${enemy.name ?? "Enemy"} hits you for ${retDmg}.`);
     this.updateStatsUI();
     if (player.hp <= 0) {
@@ -1139,6 +1350,82 @@ export class GameController {
       this.addMessage("You are dead.");
       this.showGameOver(enemy.name ?? "an unknown enemy");
     }
+    return true;
+  }
+
+  private wandAttack(enemyIdx: number): boolean {
+    const s = this.state.stats;
+    const mpCost = 4;
+    if (s.mp < mpCost) {
+      this.addMessage("Not enough mana to fire the wand! (need 4 MP)");
+      return false;
+    }
+    s.mp -= mpCost;
+    const boltDmg = 3 + Math.floor(Math.max(0, s.int - 10));
+    this.applyWandHit(enemyIdx, boltDmg);
+    this.addMessage(`(MP: ${s.mp}/${s.maxMp})`);
+    this.updateStatsUI();
+    return true;
+  }
+
+  private applyWandHit(enemyIdx: number, boltDmg: number): void {
+    const entities = currentEntities(this.state);
+    const enemy = entities[enemyIdx];
+    const dmg = Math.max(1, boltDmg - (enemy.def ?? 0));
+    enemy.hp = (enemy.hp ?? 1) - dmg;
+    this.addMessage(`Your bolt hits ${enemy.name ?? "enemy"} for ${dmg}!`);
+    if (enemy.hp <= 0) {
+      this.addMessage(`${enemy.name ?? "Enemy"} dies!`);
+      const cleanName = (enemy.name ?? "Unknown").replace(/\s*\[BOSS\]\s*/, "").trim();
+      this.state.killCounts[cleanName] = (this.state.killCounts[cleanName] ?? 0) + 1;
+      if (enemy.loot) {
+        for (const drop of enemy.loot) { drop.x = enemy.x; drop.y = enemy.y; entities.push(drop); }
+        this.addMessage("It drops loot.");
+      }
+      entities.splice(enemyIdx, 1);
+      if (enemy.xpReward) this.grantXp(enemy.xpReward);
+    }
+  }
+
+  private levelSizeDiff(levelNum: number): { size: DungeonSize; diff: DungeonDifficulty } {
+    if (levelNum >= FINAL_LEVEL) return { size: "large", diff: "ultra" };
+    if (levelNum >= 5)           return { size: "large", diff: "hard"  };
+    if (levelNum >= 3)           return { size: "medium", diff: "hard" };
+    return { size: "small", diff: "easy" };
+  }
+
+  private formatTime(ms: number): string {
+    const s = Math.floor(ms / 1000);
+    const m = Math.floor(s / 60);
+    const h = Math.floor(m / 60);
+    const ss = String(s % 60).padStart(2, "0");
+    const mm = String(m % 60).padStart(2, "0");
+    return h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
+  }
+
+  private showVictory(): void {
+    const overlay = document.getElementById("victory-overlay")!;
+    document.getElementById("v-name")!.textContent =
+      `${this.state.playerName} conquered the Castle of the Winds`;
+
+    const totalKills = Object.values(this.state.killCounts).reduce((a, b) => a + b, 0);
+    const elapsed = this.formatTime(Date.now() - this.state.startTime);
+    document.getElementById("v-stats")!.innerHTML =
+      `<div class="v-row"><span>Time</span><span>${elapsed}</span></div>` +
+      `<div class="v-row"><span>Monsters Slain</span><span>${totalKills}</span></div>` +
+      `<div class="v-row"><span>Damage Taken</span><span>${this.state.totalDamageTaken}</span></div>` +
+      `<div class="v-row"><span>Secrets Found</span><span>${this.state.secretsFound} / ???</span></div>`;
+
+    const sorted = Object.entries(this.state.killCounts).sort((a, b) => b[1] - a[1]);
+    const killsEl = document.getElementById("v-kills")!;
+    killsEl.innerHTML = sorted.length === 0
+      ? `<span style="color:#808080;">No kills recorded.</span>`
+      : `<div style="font-weight:bold;color:#000080;margin-bottom:4px;">Kill Breakdown</div>` +
+        sorted.map(([name, count]) =>
+          `<div class="v-row"><span>${name}</span><span>${count}</span></div>`
+        ).join("");
+
+    overlay.style.display = "flex";
   }
 
   private showGameOver(killedBy: string): void {
@@ -1249,33 +1536,51 @@ export class GameController {
       this.modalBag.textContent = "(empty bag)";
       return;
     }
+
+    // Stack consumables (no slot) by name; equipment shows individually
+    type StackGroup = { item: Entity; count: number; firstIdx: number };
+    const groups: StackGroup[] = [];
+    const used = new Set<number>();
     this.state.inventory.forEach((item, idx) => {
+      if (used.has(idx)) return;
+      used.add(idx);
+      if (item.slot) { groups.push({ item, count: 1, firstIdx: idx }); return; }
+      const key = item.name ?? item.sprite;
+      let count = 1;
+      this.state.inventory.forEach((other, oidx) => {
+        if (oidx <= idx || used.has(oidx) || other.slot) return;
+        if ((other.name ?? other.sprite) === key) { count++; used.add(oidx); }
+      });
+      groups.push({ item, count, firstIdx: idx });
+    });
+
+    for (const { item, count, firstIdx } of groups) {
       const row = document.createElement("div");
       row.className = "bag-row";
       const name = document.createElement("span");
       name.style.flex = "1";
-      name.textContent = item.name ?? item.sprite;
+      name.textContent = (item.name ?? item.sprite) + (count > 1 ? ` (${count})` : "");
       row.appendChild(name);
       if (item.slot) {
         const btn = document.createElement("button");
         btn.textContent = `Equip (${item.slot})`;
-        btn.onclick = () => this.equip(idx);
+        btn.onclick = () => this.equip(firstIdx);
         row.appendChild(btn);
       }
       if (item.healAmt) {
         const btn = document.createElement("button");
         btn.textContent = `Drink (+${item.healAmt})`;
-        btn.onclick = () => this.drink(idx);
+        btn.onclick = () => this.drink(firstIdx);
         row.appendChild(btn);
       }
       if (item.boostStat) {
         const btn = document.createElement("button");
         btn.textContent = `Use`;
-        btn.onclick = () => this.useBooster(idx);
+        btn.onclick = () => this.useBooster(firstIdx);
         row.appendChild(btn);
       }
       this.modalBag.appendChild(row);
-    });
+    }
   }
 
   private updateInventoryUI(): void {
@@ -1421,12 +1726,21 @@ export class GameController {
     const s     = this.state.stats;
     const hp    = this.state.player.hp ?? s.hp;
     const maxHp = this.state.player.maxHp ?? s.maxHp;
+    const mapId = this.state.currentMapId;
+    const floorEl = document.getElementById("stat-floor");
+    if (floorEl) {
+      floorEl.textContent = mapId.startsWith("dungeon_")
+        ? `${mapId.split("_")[1]} / ${FINAL_LEVEL}`
+        : "Town";
+    }
     document.getElementById("stat-level")!.textContent  = String(s.level);
     const xpPct = Math.min(100, Math.floor((s.xp / s.xpToNext) * 100));
     const xpBar = document.getElementById("stat-xp-bar") as HTMLElement | null;
     if (xpBar) xpBar.style.width = `${xpPct}%`;
     document.getElementById("stat-xp-text")!.textContent = `${s.xp} / ${s.xpToNext} XP`;
-    document.getElementById("stat-hp")!.textContent    = `${hp}/${maxHp}`;
+    const hpEl = document.getElementById("stat-hp")!;
+    hpEl.textContent = `${hp}/${maxHp}`;
+    hpEl.style.color = hp <= Math.ceil(maxHp * 0.25) ? "#cc0000" : "";
     document.getElementById("stat-mp")!.textContent    = `${s.mp}/${s.maxMp}`;
     document.getElementById("stat-atk")!.textContent   = String(this.playerTotalAtk());
     document.getElementById("stat-armor")!.textContent = String(this.playerTotalDef());

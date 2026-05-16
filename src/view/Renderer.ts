@@ -169,6 +169,19 @@ export class Renderer {
       }
     }
 
+    // Boss marker — red dot on seen tiles
+    for (const e of entities) {
+      if (e.type !== "enemy" || !(e.name ?? "").includes("[BOSS]")) continue;
+      if (map.fogOfWar && !map.isSeen(e.x, e.y)) continue;
+      ctx.fillStyle = "#ff2020";
+      ctx.fillRect(ox + e.x * ts, oy + e.y * ts, pd, pd);
+      if (ts >= 3) {
+        ctx.fillStyle = "#ff2020";
+        ctx.font = `bold 9px 'MS Sans Serif', Arial, sans-serif`;
+        ctx.fillText("☠", ox + e.x * ts + pd + 1, oy + e.y * ts + pd);
+      }
+    }
+
     // Player dot (drawn last so always visible)
     ctx.fillStyle = "#00ff44";
     ctx.fillRect(ox + state.player.x * ts, oy + state.player.y * ts, pd, pd);
@@ -182,5 +195,7 @@ export class Renderer {
     ctx.fillStyle = "#fff";    ctx.fillText("exit/up", 13, 34);
     ctx.fillStyle = "#ff6600"; ctx.fillRect(4, 38, 6, 6);
     ctx.fillStyle = "#fff";    ctx.fillText("stairs down", 13, 44);
+    ctx.fillStyle = "#ff2020"; ctx.fillRect(4, 48, 6, 6);
+    ctx.fillStyle = "#fff";    ctx.fillText("boss", 13, 54);
   }
 }

@@ -1,6 +1,8 @@
 import { TileMap, TileDef } from "../model/TileMap";
 import { Entity, MapInstance } from "../model/GameState";
 
+export const FINAL_LEVEL = 6;
+
 export type DungeonSize = "small" | "medium" | "large";
 export type DungeonDifficulty = "easy" | "hard" | "ultra";
 
@@ -43,20 +45,30 @@ const BOSS_TEMPLATES: Record<DungeonDifficulty, EnemyTemplate> = {
   ultra: { sprite:"sphinx",  name:"Void Archdemon",hp:90, atk:9, def:6, goldMin:250, goldMax:500, xpReward:600 },
 };
 
+const FINAL_BOSS_TEMPLATE: EnemyTemplate = {
+  sprite: "sphinx", name: "The Archmage",
+  hp: 150, atk: 12, def: 8,
+  goldMin: 500, goldMax: 1000, xpReward: 2000,
+};
+
 const ITEM_POOLS: Record<DungeonDifficulty, Partial<Entity>[]> = {
   easy: [
-    { sprite:"potion",      name:"Healing Potion", healAmt:8, price:20 },
+    { sprite:"potion",      name:"Healing Potion", healAmt:8,           price:20 },
+    { sprite:"rusty_sword", name:"Rusted Sword",   slot:"weapon", atk:3, price:15 },
+    { sprite:"guard",       name:"Padded Vest",    slot:"armor",  def:1, price:20 },
   ],
   hard: [
-    { sprite:"rusty_sword", name:"Iron Sword",    slot:"weapon", atk:5, price:50  },
-    { sprite:"potion",      name:"Healing Potion", healAmt:8,    price:20         },
-    { sprite:"guard",       name:"Leather Armor",  slot:"armor",  def:2, price:40 },
+    { sprite:"rusty_sword", name:"Iron Sword",   slot:"weapon", atk:5, price:50  },
+    { sprite:"guard",       name:"Leather Armor", slot:"armor",  def:2, price:40  },
+    { sprite:"potion",      name:"Healing Potion", healAmt:8,          price:20  },
+    { sprite:"magic_gem",   name:"Wand of Bolts",  slot:"weapon", isWand:true, price:150 },
   ],
   ultra: [
-    { sprite:"rusty_sword", name:"Steel Sword",    slot:"weapon", atk:8,  price:120 },
-    { sprite:"guard",       name:"Chain Mail",      slot:"armor",  def:4,  price:90  },
-    { sprite:"potion",      name:"Greater Potion",  healAmt:16,           price:40  },
+    { sprite:"rusty_sword", name:"Steel Sword",    slot:"weapon", atk:8, price:120 },
+    { sprite:"guard",       name:"Chain Mail",      slot:"armor",  def:4, price:90  },
+    { sprite:"potion",      name:"Greater Potion",  healAmt:16,          price:40  },
     { sprite:"ancient_map", name:"Strength Scroll", boostStat:"str", boostAmt:2, price:80 },
+    { sprite:"locked_chest",name:"Iron Shield",     slot:"shield", def:2, price:45  },
   ],
 };
 
@@ -120,7 +132,7 @@ export function generateDungeon(
   prevMapId: string,
   prevX: number,
   prevY: number,
-  nextMapId: string,
+  nextMapId: string | null,
 ): MapInstance {
   const [W, H]   = size === "small" ? [26, 22] : size === "medium" ? [42, 34] : [60, 48];
   const maxRooms = size === "small" ? 7 : size === "medium" ? 14 : 22;
@@ -150,6 +162,37 @@ export function generateDungeon(
     }
     grid[cy][cx] = 0;
   }
+  function carveRoomShape(rx: number, ry: number, rw: number, rh: number): void {
+    carveRect(rx, ry, rw, rh);
+    if (rw < 6 || rh < 5) return;
+    const r = Math.random();
+    if (r < 0.42) return; // plain rect
+
+    if (r < 0.70) {
+      // L-shape: fill back one corner (~1/3 of room)
+      const qw = Math.max(2, Math.floor(rw / 3));
+      const qh = Math.max(2, Math.floor(rh / 3));
+      const corner = Math.floor(Math.random() * 4);
+      const x1 = corner % 2 === 0 ? rx : rx + rw - qw;
+      const y1 = corner < 2    ? ry : ry + rh - qh;
+      for (let y = y1; y < y1 + qh; y++)
+        for (let x = x1; x < x1 + qw; x++)
+          grid[y][x] = 1;
+      return;
+    }
+
+    // Octagonal: diagonal corner cuts
+    const c = Math.max(1, Math.floor(Math.min(rw, rh) / 4));
+    for (let i = 0; i < c; i++) {
+      for (let j = 0; j < c - i; j++) {
+        grid[ry + i][rx + j] = 1;                    // NW
+        grid[ry + i][rx + rw - 1 - j] = 1;           // NE
+        grid[ry + rh - 1 - i][rx + j] = 1;           // SW
+        grid[ry + rh - 1 - i][rx + rw - 1 - j] = 1; // SE
+      }
+    }
+  }
+
   function connectRooms(a: Room, b: Room) {
     const { cx: ax, cy: ay } = roomCenter(a);
     const { cx: bx, cy: by } = roomCenter(b);
@@ -176,7 +219,7 @@ export function generateDungeon(
     const ry = rand(1, H - rh - 2);
     if (rooms.some(r => rx <= r.x + r.w && rx + rw >= r.x && ry <= r.y + r.h && ry + rh >= r.y)) continue;
     rooms.push({ x: rx, y: ry, w: rw, h: rh });
-    carveRect(rx, ry, rw, rh);
+    carveRoomShape(rx, ry, rw, rh);
   }
 
   // Guarantee at least 2 rooms so boss is never in the entry room
@@ -250,44 +293,69 @@ export function generateDungeon(
         !entities.some(en => en.rangedAtk !== undefined);
       const tmpl = useWizard ? wizardTmpl! : pick(enemyPool);
       const pos = findFloorInRoom(grid, room);
+      const enemyLoot: Entity[] = [];
+      if (Math.random() < 0.60) enemyLoot.push({ x:0, y:0, type:"treasure", sprite:"gold", name:"Gold", gold: rand(tmpl.goldMin, tmpl.goldMax) });
+      if (Math.random() < 0.25) enemyLoot.push({ x:0, y:0, type:"item" as const, ...pick(itemPool) });
       entities.push({
         x: pos.x, y: pos.y,
         type: "enemy", sprite: tmpl.sprite, name: tmpl.name,
         hp: tmpl.hp, maxHp: tmpl.hp, atk: tmpl.atk, def: tmpl.def, xpReward: tmpl.xpReward,
         ...(tmpl.rangedAtk !== undefined ? { rangedAtk: tmpl.rangedAtk } : {}),
-        loot: [{ x:0, y:0, type:"treasure", sprite:"gold", name:"Gold", gold: rand(tmpl.goldMin, tmpl.goldMax) }],
+        loot: enemyLoot,
       });
     }
-    const gpos = findFloorInRoom(grid, room);
-    entities.push({ x: gpos.x, y: gpos.y, type:"treasure", sprite:"gold", name:"Gold Pile", gold: rand(5, 20) });
-    if (Math.random() < 0.4) {
+    // Rare floor item only — no guaranteed gold pile
+    if (Math.random() < 0.15) {
       const ipos = findFloorInRoom(grid, room);
       entities.push({ x: ipos.x, y: ipos.y, type:"item", ...pick(itemPool) } as Entity);
     }
   }
 
+  // ── Supply crates in side rooms ───────────────────────────────────
+  // Rooms 2..n-2: out-of-the-way rooms reward thorough exploration
+  const sideRooms = rooms.slice(2, rooms.length - 2);
+  const numCrates = Math.min(sideRooms.length, size === "small" ? 1 : 2);
+  const cratePool = [...sideRooms];
+  for (let c = 0; c < numCrates && cratePool.length > 0; c++) {
+    const ri = Math.floor(Math.random() * cratePool.length);
+    const cr = cratePool.splice(ri, 1)[0];
+    const cp = findFloorInRoom(grid, cr);
+    const crateLoot: Entity[] = [{ x:0, y:0, type:"treasure", sprite:"gold", name:"Gold Coins", gold: rand(15, 50) }];
+    if (Math.random() < 0.70) crateLoot.push({ x:0, y:0, type:"item" as const, ...pick(itemPool) });
+    entities.push({ x: cp.x, y: cp.y, type:"chest", sprite:"crate", name:"Supply Crate", loot: crateLoot });
+  }
+
   // ── Boss room ─────────────────────────────────────────────────────
   const lr   = rooms[rooms.length - 1];
-  const boss = BOSS_TEMPLATES[difficulty];
+  const isFinalLevel = levelNum >= FINAL_LEVEL;
+  const boss = isFinalLevel ? FINAL_BOSS_TEMPLATE : BOSS_TEMPLATES[difficulty];
   const bossPos = findFloorInRoom(grid, lr);
+
+  const bossLoot: Entity[] = [
+    { x:0, y:0, type:"treasure", sprite:"gold", name:"Boss Hoard", gold: rand(boss.goldMin, boss.goldMax) },
+  ];
+  if (isFinalLevel) {
+    bossLoot.push({ x:0, y:0, type:"item" as const, sprite:"portal", name:"Archmage's Crown", isFinalItem: true, price: 9999 });
+  } else {
+    bossLoot.push(...itemPool.slice(0, 1).map(it => ({ x:0, y:0, type:"item" as const, ...it })) as Entity[]);
+  }
 
   entities.push({
     x: bossPos.x, y: bossPos.y,
     type: "enemy", sprite: boss.sprite, name: `${boss.name} [BOSS]`,
     hp: boss.hp, maxHp: boss.hp, atk: boss.atk, def: boss.def, xpReward: boss.xpReward,
-    loot: [
-      { x:0, y:0, type:"treasure", sprite:"gold", name:"Boss Hoard", gold: rand(boss.goldMin, boss.goldMax) },
-      ...itemPool.slice(0, 1).map(it => ({ x:0, y:0, type:"item" as const, ...it })) as Entity[],
-    ],
+    loot: bossLoot,
   });
 
-  // Stairs-down in a separate tile of the boss room (never same tile as boss)
-  const stairsPos = findFloorInRoomExcluding(grid, lr, bossPos.x, bossPos.y);
-  entities.push({
-    x: stairsPos.x, y: stairsPos.y,
-    type: "portal", sprite: "portal", name: "Stairs Down",
-    behavior: { targetMap: nextMapId, targetX: 3, targetY: 3 },
-  });
+  // Stairs-down only if not the final level
+  if (nextMapId !== null) {
+    const stairsPos = findFloorInRoomExcluding(grid, lr, bossPos.x, bossPos.y);
+    entities.push({
+      x: stairsPos.x, y: stairsPos.y,
+      type: "portal", sprite: "portal", name: "Stairs Down",
+      behavior: { targetMap: nextMapId, targetX: 3, targetY: 3 },
+    });
+  }
 
   return { map, entities };
 }

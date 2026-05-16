@@ -8,7 +8,8 @@ export interface Projectile {
   dx: number;
   dy: number;
   damage: number;
-  ownerId: string; // `${wizard.x},${wizard.y}` — one bolt per wizard
+  ownerId: string;
+  fromPlayer?: boolean;
 }
 
 export type EntityType =
@@ -47,6 +48,9 @@ export interface Entity {
   tileH?: number;
   hideWhenPlayerIn?: { x: number; y: number; w: number; h: number };
   opened?: boolean;
+  isFinalItem?: boolean;
+  isWand?: boolean;
+  shootCooldown?: number;
   behavior?: {
     dialogue?: string;
     targetMap?: string;
@@ -98,6 +102,11 @@ export interface GameState {
   helpOpen: boolean;
   mapPreviewMeta: { size: string; diff: string; mapId: string } | null;
   projectiles: Projectile[];
+  killCounts: Record<string, number>;
+  totalDamageTaken: number;
+  secretsFound: number;
+  won: boolean;
+  startTime: number;
 }
 
 export function currentMap(s: GameState): TileMap {

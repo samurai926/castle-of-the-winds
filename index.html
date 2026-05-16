@@ -127,7 +127,7 @@
       overflow-y: auto; font-size: 11px; line-height: 1.4;
     }
 
-    #message-log p { margin: 3px 0; padding-top: 3px; border-top: 1px solid #e8e8e8; }
+    #message-log p { margin: 3px 0; }
 
     /* ── Shared Win3.1 modal styles ── */
     .win-overlay {
@@ -315,6 +315,9 @@
       cursor: pointer; margin-top: 4px;
     }
 
+    /* ── Victory ── */
+    .v-row { display:flex; justify-content:space-between; padding:2px 0; }
+
     /* ── Game Over ── */
     #gameover-overlay {
       display: none; position: fixed; inset: 0;
@@ -349,9 +352,10 @@
     </div>
     <div id="menu-bar">
       <button class="menu-btn" id="btn-main-menu">Menu</button>
+      <button class="menu-btn" id="btn-inventory">Inventory [I]</button>
       <button class="menu-btn" id="btn-map">Map [M]</button>
       <button class="menu-btn" id="btn-debug">Debug [~]</button>
-      <button class="menu-btn" id="btn-help">Help [?]</button>
+      <button class="menu-btn" id="btn-help" style="margin-left:auto;">Help [?]</button>
     </div>
     <div id="main-area">
       <div id="canvas-frame">
@@ -362,6 +366,8 @@
           <div class="panel">
             <h3>Stats</h3>
             <div class="stat-row"><span>LVL</span><span id="stat-level">1</span></div>
+            <div class="stat-row"><span>FLOOR</span><span id="stat-floor">Town</span></div>
+            <div class="stat-row"><span>TIME</span><span id="stat-time">0:00</span></div>
             <div style="margin:1px 0 3px;">
               <div style="background:#fff;border-top:1px solid #808080;border-left:1px solid #808080;border-right:1px solid #fff;border-bottom:1px solid #fff;height:7px;overflow:hidden;">
                 <div id="stat-xp-bar" style="background:#000080;height:100%;width:0%;"></div>
@@ -460,6 +466,10 @@
           <button class="win-action-btn" id="dbg-items-btn">All Items</button>
           <button class="win-action-btn" id="dbg-levelup-btn">Level Up</button>
         </div>
+        <div class="win-btn-row" style="justify-content:flex-start; gap:6px; margin-top:4px;">
+          <button class="win-action-btn" id="dbg-goto-final-btn" style="color:#804000;font-weight:bold;">Goto Final [6]</button>
+          <button class="win-action-btn" id="dbg-win-btn" style="color:#006000;font-weight:bold;">Win Game</button>
+        </div>
         <hr style="border:none; border-top:1px solid #808080; margin:8px 0;">
         <div style="font-weight:bold; font-size:11px; margin-bottom:4px;">Dungeon Generator</div>
         <div class="win-row">
@@ -504,10 +514,25 @@
               <option value="Cave Troll">Cave Troll [BOSS]</option>
               <option value="Dungeon Lord">Dungeon Lord [BOSS]</option>
               <option value="Void Archdemon">Void Archdemon [BOSS]</option>
+              <option value="The Archmage">The Archmage [BOSS] — Final</option>
             </optgroup>
           </select>
           <button class="win-action-btn" id="dbg-spawn-btn">Spawn</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ VICTORY ═══ -->
+  <div id="victory-overlay" style="display:none; position:fixed; inset:0; background:linear-gradient(160deg, #080810 0%, #0d1535 45%, #150d28 100%); align-items:center; justify-content:center; z-index:200; flex-direction:column; gap:16px;">
+    <div class="win-dialog" style="width:400px;">
+      <div class="win-dialog-title" style="background:#804000;"><span>Victory — Castle of the Winds</span></div>
+      <div style="padding:20px; text-align:center; font-family:'MS Sans Serif',Arial,sans-serif;">
+        <div style="font-size:20px; font-weight:bold; color:#000080; margin-bottom:6px;">★ Castle Cleared! ★</div>
+        <div id="v-name" style="font-size:13px; margin-bottom:14px; color:#000;"></div>
+        <div id="v-stats" style="text-align:left; font-size:11px; margin-bottom:10px; border-bottom:1px solid #808080; padding-bottom:8px;"></div>
+        <div id="v-kills" style="text-align:left; font-size:11px; max-height:160px; overflow-y:auto; margin-bottom:14px;"></div>
+        <button onclick="location.reload()" class="win-action-btn">New Game</button>
       </div>
     </div>
   </div>
