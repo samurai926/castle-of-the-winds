@@ -2,6 +2,15 @@ import { TileMap } from "./TileMap";
 
 export type EquipSlot = "weapon" | "shield" | "armor" | "head";
 
+export interface Projectile {
+  x: number;
+  y: number;
+  dx: number;
+  dy: number;
+  damage: number;
+  ownerId: string; // `${wizard.x},${wizard.y}` — one bolt per wizard
+}
+
 export type EntityType =
   | "player"
   | "npc"
@@ -33,6 +42,7 @@ export interface Entity {
   boostStat?: "str" | "int" | "con" | "dex";
   boostAmt?: number;
   xpReward?: number;
+  rangedAtk?: number;
   tileW?: number;
   tileH?: number;
   hideWhenPlayerIn?: { x: number; y: number; w: number; h: number };
@@ -86,6 +96,8 @@ export interface GameState {
   activeShopId: string | null;
   mapModeReturnId: string | null;
   helpOpen: boolean;
+  mapPreviewMeta: { size: string; diff: string; mapId: string } | null;
+  projectiles: Projectile[];
 }
 
 export function currentMap(s: GameState): TileMap {

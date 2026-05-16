@@ -1,6 +1,7 @@
 import {
   GameState,
   Entity,
+  Projectile,
   EquipSlot,
   currentMap,
   currentEntities,
@@ -38,7 +39,23 @@ export class GameController {
   private dungeonDiff: DungeonDifficulty = "easy";
   private dungeonMeta: Record<string, { size: DungeonSize; diff: DungeonDifficulty }> = {};
   private killMode = false;
+  private spawnMode = false;
   private levelUpOpen = false;
+
+  private readonly SPAWN_CATALOG: Record<string, Partial<Entity> & { sprite: string; name: string; hp: number; atk: number }> = {
+    "Scorpion":      { sprite:"scorpion", name:"Scorpion",              hp:5,  maxHp:5,  atk:1, def:0, xpReward:12  },
+    "Goblin":        { sprite:"orc",      name:"Goblin",                hp:6,  maxHp:6,  atk:2, def:0, xpReward:15  },
+    "Orc":           { sprite:"orc",      name:"Orc",                   hp:10, maxHp:10, atk:3, def:1, xpReward:30  },
+    "Skeleton":      { sprite:"skeleton", name:"Skeleton",              hp:8,  maxHp:8,  atk:2, def:1, xpReward:28  },
+    "Cyclops":       { sprite:"cyclops",  name:"Cyclops",               hp:14, maxHp:14, atk:4, def:2, xpReward:45  },
+    "Dark Mage":     { sprite:"villager", name:"Dark Mage",             hp:14, maxHp:14, atk:0, def:1, xpReward:60,  rangedAtk:9  },
+    "Demon":         { sprite:"demon",    name:"Demon",                 hp:20, maxHp:20, atk:5, def:2, xpReward:80  },
+    "Gargoyle":      { sprite:"sphinx",   name:"Gargoyle",              hp:12, maxHp:12, atk:4, def:2, xpReward:60  },
+    "Void Mage":     { sprite:"villager", name:"Void Mage",             hp:20, maxHp:20, atk:0, def:2, xpReward:100, rangedAtk:15 },
+    "Cave Troll":    { sprite:"cyclops",  name:"Cave Troll [BOSS]",     hp:30, maxHp:30, atk:4, def:2, xpReward:120 },
+    "Dungeon Lord":  { sprite:"demon",    name:"Dungeon Lord [BOSS]",   hp:55, maxHp:55, atk:6, def:4, xpReward:300 },
+    "Void Archdemon":{ sprite:"sphinx",   name:"Void Archdemon [BOSS]", hp:90, maxHp:90, atk:9, def:6, xpReward:600 },
+  };
   private levelUpBaseStats: { str: number; int: number; con: number; dex: number; statPoints: number } | null = null;
   private canvas: HTMLCanvasElement;
 
@@ -59,6 +76,27 @@ export class GameController {
     document.getElementById("modal-close")?.addEventListener("click", () => this.closeInventory());
     document.getElementById("shop-close")?.addEventListener("click", () => this.closeShop());
 
+    // Start screen right-click lore
+    document.getElementById("start-screen")?.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      const lore = [
+        "Three expeditions entered the caves. One returned. It didn't speak of the others.",
+        "The archmage's library was found empty. The books had walked themselves out.",
+        "Workers who carved the deepest chambers refused to return to the surface. Their tools were found arranged in a perfect circle.",
+        "The winds that howl through the lower halls smell faintly of burnt parchment and old regret.",
+        "The name 'Castle of the Winds' was given by survivors. No one agrees on what it was called before, or in what language.",
+        "The stones in the lowest chambers are warm to the touch. No geologist has offered an explanation.",
+        "A merchant once claimed to have sold candles to a figure deep in the caves. The coins he received dissolved by dawn.",
+        "Local legend says the castle predates the town by four centuries. Local legend says this quietly, and only once.",
+        "The dungeon redraws itself between visits. Cartographers have stopped trying.",
+        "Guards stationed at the cave entrance are rotated weekly. Those who stay longer stop blinking as much.",
+        "Items left in the dungeon overnight are sometimes moved. Never taken. Just moved.",
+        "The boss on the final level has a name. No one who learned it came back to share it.",
+      ];
+      const loreEl = document.getElementById("start-lore");
+      if (loreEl) loreEl.textContent = lore[Math.floor(Math.random() * lore.length)];
+    });
+
     // Start screen
     document.getElementById("start-play")?.addEventListener("click", () => {
       const inp = document.getElementById("start-name-input") as HTMLInputElement;
@@ -75,7 +113,10 @@ export class GameController {
     // Main menu
     document.getElementById("mm-resume")?.addEventListener("click", () => this.closeMainMenu());
     document.getElementById("mm-rest")?.addEventListener("click", () => this.rest());
-    document.getElementById("mm-restart")?.addEventListener("click", () => location.reload());
+    document.getElementById("mm-restart")?.addEventListener("click", () => {
+      sessionStorage.setItem("autostart", this.state.playerName);
+      location.reload();
+    });
     document.getElementById("mm-quit")?.addEventListener("click", () => location.reload());
 
     // Debug
@@ -87,6 +128,7 @@ export class GameController {
     document.getElementById("dbg-levelup-btn")?.addEventListener("click", () => this.debugLevelUp());
     document.getElementById("dbg-gen-btn")?.addEventListener("click", () => this.debugGenDungeon());
     document.getElementById("dbg-preview-btn")?.addEventListener("click", () => this.debugPreviewDungeon());
+    document.getElementById("dbg-spawn-btn")?.addEventListener("click", () => this.debugEnterSpawnMode());
     document.getElementById("dbg-close")?.addEventListener("click", () => this.closeDebugMenu());
 
     // Level-up modal
@@ -131,6 +173,13 @@ export class GameController {
     this.updateStatsUI();
     this.updateInventoryUI();
     this.refreshFOV();
+    // Projectiles advance on a real-time tick independent of player turns
+    setInterval(() => {
+      if (this.state.started && !this.state.dead && !this.anyModalOpen()) {
+        this.wizardsFire();
+        this.moveProjectiles();
+      }
+    }, 750);
     this.loop();
   }
 
@@ -155,12 +204,26 @@ export class GameController {
   private onKey(e: KeyboardEvent): void {
     if (!this.state.started) return;
 
+    // Any key closes map / debug preview
+    if (this.state.mapMode) {
+      e.preventDefault();
+      this.toggleMap();
+      this.input.consumeMove();
+      return;
+    }
+
     if (e.key === "Escape") {
       e.preventDefault();
       if (this.killMode) {
         this.killMode = false;
         this.canvas.style.cursor = "";
         this.addMessage("[DEBUG] Kill mode cancelled.");
+        return;
+      }
+      if (this.spawnMode) {
+        this.spawnMode = false;
+        this.canvas.style.cursor = "";
+        this.addMessage("[DEBUG] Spawn mode cancelled.");
         return;
       }
       if (this.state.inventoryOpen) { this.closeInventory(); return; }
@@ -208,6 +271,7 @@ export class GameController {
         delete this.state.maps["dungeon_preview"];
       }
       this.state.mapMode = false;
+      this.state.mapPreviewMeta = null;
       this.setSidebarMapMode(false);
     } else {
       this.state.mapMode = true;
@@ -229,14 +293,22 @@ export class GameController {
   private populateMapInfo(): void {
     const mapId = this.state.currentMapId;
     const entities = currentEntities(this.state);
-    const meta = this.dungeonMeta[mapId];
+    // For debug preview, show info about the real map, not "dungeon_preview"
+    const realMapId = this.state.mapModeReturnId ?? mapId;
+    const meta = this.dungeonMeta[realMapId];
 
     const metaEl = document.getElementById("map-info-meta");
     if (metaEl) {
-      let h = `<h3>${mapId}</h3>`;
+      let h = `<h3>${realMapId}</h3>`;
       if (meta) {
         h += `<div class="stat-row"><span>Size</span><span>${meta.size}</span></div>`;
         h += `<div class="stat-row"><span>Diff</span><span>${meta.diff}</span></div>`;
+      }
+      const boss = entities.find(e => e.type === "enemy" && e.name?.includes("[BOSS]"));
+      if (boss) {
+        const bName = boss.name?.replace(" [BOSS]", "") ?? "Boss";
+        h += `<div style="font-size:10px;color:#c04040;margin-top:4px;font-weight:bold;">☠ ${bName}</div>`;
+        h += `<div style="font-size:10px;color:#808080;">hp:${boss.hp}/${boss.maxHp} atk:${boss.atk} def:${boss.def ?? 0}</div>`;
       }
       if (!this.state.mapModeReturnId) {
         h += `<div style="font-size:10px;color:#808080;margin-top:3px;">Click map to warp</div>`;
@@ -346,13 +418,16 @@ export class GameController {
     this.closeDebugMenu();
     const realMapId = this.state.currentMapId;
     const realInst = this.state.maps[realMapId];
-    // fogOfWar=false initializes all seen[] to true → every tile visible
     const previewMap = new TileMap(realInst.map.grid, realInst.map.tileDefs, false);
     this.state.maps["dungeon_preview"] = { map: previewMap, entities: realInst.entities };
     this.state.mapModeReturnId = realMapId;
     this.state.currentMapId = "dungeon_preview";
+    const meta = this.dungeonMeta[realMapId];
+    this.state.mapPreviewMeta = meta
+      ? { size: meta.size, diff: meta.diff, mapId: realMapId }
+      : null;
     this.toggleMap();
-    this.addMessage("[DEBUG] Full map revealed. Press M to close.");
+    this.addMessage("[DEBUG] Full map revealed. Press any key to close.");
   }
 
   private debugAddAllItems(): void {
@@ -391,6 +466,15 @@ export class GameController {
     this.killMode = true;
     this.canvas.style.cursor = "crosshair";
     this.addMessage("[DEBUG] Click an enemy to kill it. ESC to cancel.");
+  }
+
+  private debugEnterSpawnMode(): void {
+    this.closeDebugMenu();
+    const sel = document.getElementById("dbg-spawn-select") as HTMLSelectElement;
+    const key = sel?.value ?? "Goblin";
+    this.spawnMode = true;
+    this.canvas.style.cursor = "crosshair";
+    this.addMessage(`[DEBUG] Click tile to spawn ${key}. ESC to cancel.`);
   }
 
   private debugLevelUp(): void {
@@ -433,13 +517,14 @@ export class GameController {
       return;
     }
 
+    const ts = this.renderer.tileSize;
+    const camX = Math.floor(this.state.player.x - Math.floor(this.renderer.viewportTilesX / 2));
+    const camY = Math.floor(this.state.player.y - Math.floor(this.renderer.viewportTilesY / 2));
+    const tileX = camX + Math.floor(px / ts);
+    const tileY = camY + Math.floor(py / ts);
+
     // Kill mode: click to kill enemy in normal view
     if (this.killMode) {
-      const ts = this.renderer.tileSize;
-      const camX = Math.floor(this.state.player.x - Math.floor(this.renderer.viewportTilesX / 2));
-      const camY = Math.floor(this.state.player.y - Math.floor(this.renderer.viewportTilesY / 2));
-      const tileX = camX + Math.floor(px / ts);
-      const tileY = camY + Math.floor(py / ts);
       const entities = currentEntities(this.state);
       const idx = entities.findIndex(e2 => e2.type === "enemy" && e2.x === tileX && e2.y === tileY);
       if (idx !== -1) {
@@ -449,6 +534,40 @@ export class GameController {
         this.addMessage("[DEBUG] No enemy there.");
       }
       this.killMode = false;
+      this.canvas.style.cursor = "";
+      return;
+    }
+
+    // Spawn mode: click tile to place selected enemy
+    if (this.spawnMode) {
+      const map = currentMap(this.state);
+      if (map.isSolid(tileX, tileY)) {
+        this.addMessage("[DEBUG] Can't spawn on solid tile.");
+      } else {
+        const sel = document.getElementById("dbg-spawn-select") as HTMLSelectElement;
+        const key = sel?.value ?? "Goblin";
+        const tmpl = this.SPAWN_CATALOG[key];
+        if (tmpl) {
+          const entities = currentEntities(this.state);
+          const entity: Entity = {
+            x: tileX, y: tileY,
+            type: "enemy",
+            sprite: tmpl.sprite,
+            name: tmpl.name,
+            hp: tmpl.hp,
+            maxHp: tmpl.maxHp ?? tmpl.hp,
+            atk: tmpl.atk,
+            def: tmpl.def ?? 0,
+            xpReward: tmpl.xpReward,
+            aware: true,
+            ...(tmpl.rangedAtk !== undefined ? { rangedAtk: tmpl.rangedAtk } : {}),
+            loot: [{ x:0, y:0, type:"treasure", sprite:"gold", name:"Gold", gold: 10 }],
+          };
+          entities.push(entity);
+          this.addMessage(`[DEBUG] Spawned ${tmpl.name} at (${tileX}, ${tileY}).`);
+        }
+      }
+      this.spawnMode = false;
       this.canvas.style.cursor = "";
     }
   }
@@ -510,9 +629,11 @@ export class GameController {
       case "enemy": {
         const hp = entity.hp ?? "?";
         const maxHp = entity.maxHp ?? "?";
-        const atk = entity.atk ?? 0;
         const def = entity.def ?? 0;
-        return `${entity.name ?? "Enemy"} — HP: ${hp}/${maxHp}  ATK: ${atk}  DEF: ${def}`;
+        if (entity.rangedAtk !== undefined) {
+          return `${entity.name ?? "Wizard"} — HP: ${hp}/${maxHp}  BOLT: ${entity.rangedAtk}  DEF: ${def}  [ranged]`;
+        }
+        return `${entity.name ?? "Enemy"} — HP: ${hp}/${maxHp}  ATK: ${entity.atk ?? 0}  DEF: ${def}`;
       }
       case "npc": {
         const shopId = entity.behavior?.shopId as string | undefined;
@@ -697,6 +818,11 @@ export class GameController {
 
     for (const enemy of entities) {
       if (enemy.type !== "enemy" || !enemy.aware) continue;
+
+      // Ranged enemies never charge — firing handled on real-time tick
+      if (enemy.rangedAtk !== undefined) continue;
+
+      // ── Melee — charge player ───────────────────────────────────────
       if (Math.random() < 0.4) continue;
 
       const dx = Math.sign(px - enemy.x);
@@ -721,6 +847,93 @@ export class GameController {
         break;
       }
     }
+  }
+
+  private wizardsFire(): void {
+    const entities = currentEntities(this.state);
+    const px = this.state.player.x, py = this.state.player.y;
+
+    for (const enemy of entities) {
+      if (enemy.type !== "enemy" || enemy.rangedAtk === undefined || !enemy.aware) continue;
+
+      const dx = px - enemy.x, dy = py - enemy.y;
+      if (dx === 0 && dy === 0) continue;
+
+      const ddx = Math.sign(dx), ddy = Math.sign(dy);
+
+      // Line-of-sight: walk from wizard to player, abort if any solid tile or blocking entity
+      if (!this.wizardHasLoS(enemy.x, enemy.y, px, py, ddx, ddy)) continue;
+
+      const stepX = enemy.x + ddx, stepY = enemy.y + ddy;
+
+      if (stepX === px && stepY === py) {
+        // Adjacent — direct zap
+        const dmg = Math.max(1, enemy.rangedAtk - this.playerTotalDef());
+        this.state.player.hp = (this.state.player.hp ?? 0) - dmg;
+        this.state.stats.hp = this.state.player.hp;
+        this.addMessage(`${enemy.name ?? "Wizard"} zaps you point-blank for ${dmg}!`);
+        this.updateStatsUI();
+        if (this.state.player.hp <= 0) { this.state.dead = true; this.showGameOver(enemy.name ?? "a wizard"); }
+      } else {
+        const ownerId = `${enemy.x},${enemy.y}`;
+        if (!this.state.projectiles.some(p => p.ownerId === ownerId)) {
+          this.state.projectiles.push({ x: stepX, y: stepY, dx: ddx, dy: ddy, damage: enemy.rangedAtk, ownerId });
+        }
+      }
+    }
+  }
+
+  private wizardHasLoS(wx: number, wy: number, px: number, py: number, ddx: number, ddy: number): boolean {
+    const map = currentMap(this.state);
+    // FOV is the source of truth for wall/terrain LoS — if wizard tile is visible, no walls block
+    if (!map.isVisible(wx, wy)) return false;
+    // Walk bolt path for entity blockers (enemies, NPCs obstruct the shot)
+    const entities = currentEntities(this.state);
+    let cx = wx + ddx, cy = wy + ddy;
+    for (let i = 0; i < 15; i++) {
+      if (map.isSolid(cx, cy)) return false;
+      if (cx === px && cy === py) return true;
+      if (entities.some(e => e.x === cx && e.y === cy &&
+          (e.type === "enemy" || e.type === "npc" || e.type === "building"))) return false;
+      cx += ddx; cy += ddy;
+    }
+    return true;
+  }
+
+  private moveProjectiles(): void {
+    if (this.state.projectiles.length === 0) return;
+    const map = currentMap(this.state);
+    const entities = currentEntities(this.state);
+    const px = this.state.player.x, py = this.state.player.y;
+    const alive: Projectile[] = [];
+
+    for (const proj of this.state.projectiles) {
+      const nx = proj.x + proj.dx;
+      const ny = proj.y + proj.dy;
+
+      if (map.isSolid(nx, ny)) continue;
+
+      // Blocked by any solid entity (not items/treasure/portals)
+      const blocked = entities.some(e =>
+        e.x === nx && e.y === ny &&
+        e.type !== "item" && e.type !== "treasure" && e.type !== "portal" && e.type !== "door"
+      );
+      if (blocked) continue;
+
+      if (nx === px && ny === py) {
+        const dmg = Math.max(1, proj.damage - this.playerTotalDef());
+        this.state.player.hp = (this.state.player.hp ?? 0) - dmg;
+        this.state.stats.hp = this.state.player.hp;
+        this.addMessage(`A magical bolt strikes you for ${dmg}!`);
+        this.updateStatsUI();
+        if (this.state.player.hp <= 0) { this.state.dead = true; this.showGameOver("a magical bolt"); }
+        continue;
+      }
+
+      alive.push({ ...proj, x: nx, y: ny });
+    }
+
+    this.state.projectiles = alive;
   }
 
   // ── Main update ──────────────────────────────────────────────────
@@ -834,6 +1047,7 @@ export class GameController {
       }
       if (this.state.maps[target]) {
         this.state.currentMapId = target;
+        this.state.projectiles = [];
         const inst = this.state.maps[target];
         const spawn = findSpawn(inst.map, inst.entities, tx, ty);
         this.state.player.x = spawn.x;

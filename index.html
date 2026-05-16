@@ -127,7 +127,7 @@
       overflow-y: auto; font-size: 11px; line-height: 1.4;
     }
 
-    #message-log p { margin: 1px 0; }
+    #message-log p { margin: 3px 0; padding-top: 3px; border-top: 1px solid #e8e8e8; }
 
     /* ── Shared Win3.1 modal styles ── */
     .win-overlay {
@@ -258,7 +258,9 @@
     /* ── Start screen ── */
     #start-screen {
       position: fixed; inset: 0; z-index: 300;
-      background: linear-gradient(160deg, #080810 0%, #0d1535 45%, #150d28 100%);
+      background:
+        linear-gradient(160deg, rgba(8,8,16,0.72) 0%, rgba(13,21,53,0.68) 45%, rgba(21,13,40,0.72) 100%),
+        url('/bg.png') center / cover no-repeat;
       display: flex; flex-direction: column;
       align-items: center; justify-content: center;
       color: #fff; font-family: "MS Sans Serif", Arial, sans-serif;
@@ -271,6 +273,14 @@
 
     #start-screen .subtitle {
       font-size: 13px; color: #80a8ff; margin-bottom: 36px;
+    }
+
+    #start-lore {
+      position: absolute; bottom: 32px;
+      font-size: 11px; color: rgba(160,180,255,0.75);
+      font-style: italic; text-align: center;
+      max-width: 420px; min-height: 1.4em;
+      transition: opacity 0.4s;
     }
 
     .start-card {
@@ -308,7 +318,7 @@
     /* ── Game Over ── */
     #gameover-overlay {
       display: none; position: fixed; inset: 0;
-      background: #c0c0c0;
+      background: linear-gradient(160deg, #080810 0%, #0d1535 45%, #150d28 100%);
       align-items: center; justify-content: center;
       z-index: 200; flex-direction: column; gap: 16px;
     }
@@ -326,6 +336,7 @@
       <input id="start-name-input" type="text" maxlength="24" value="Adventurer" />
       <button id="start-play">Play</button>
     </div>
+    <div id="start-lore"></div>
   </div>
 
   <!-- ═══ GAME WINDOW ═══ -->
@@ -468,6 +479,34 @@
         <div class="win-btn-row" style="justify-content:flex-start; gap:6px; margin-top:4px;">
           <button class="win-action-btn" id="dbg-gen-btn">Create Dungeon</button>
           <button class="win-action-btn" id="dbg-preview-btn">Preview Map</button>
+        </div>
+        <hr style="border:none; border-top:1px solid #808080; margin:8px 0;">
+        <div style="font-weight:bold; font-size:11px; margin-bottom:4px;">Enemy Spawner</div>
+        <div class="win-row">
+          <label>Type:</label>
+          <select id="dbg-spawn-select" style="flex:1;">
+            <optgroup label="— Easy —">
+              <option value="Scorpion">Scorpion</option>
+              <option value="Goblin">Goblin</option>
+            </optgroup>
+            <optgroup label="— Hard —">
+              <option value="Orc">Orc</option>
+              <option value="Skeleton">Skeleton</option>
+              <option value="Cyclops">Cyclops</option>
+              <option value="Dark Mage">Dark Mage (ranged)</option>
+            </optgroup>
+            <optgroup label="— Ultra —">
+              <option value="Demon">Demon</option>
+              <option value="Gargoyle">Gargoyle</option>
+              <option value="Void Mage">Void Mage (ranged)</option>
+            </optgroup>
+            <optgroup label="— Bosses —">
+              <option value="Cave Troll">Cave Troll [BOSS]</option>
+              <option value="Dungeon Lord">Dungeon Lord [BOSS]</option>
+              <option value="Void Archdemon">Void Archdemon [BOSS]</option>
+            </optgroup>
+          </select>
+          <button class="win-action-btn" id="dbg-spawn-btn">Spawn</button>
         </div>
       </div>
     </div>
