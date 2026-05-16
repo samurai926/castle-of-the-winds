@@ -239,14 +239,22 @@ export class GameController {
   private populateMapInfo(): void {
     const mapId = this.state.currentMapId;
     const entities = currentEntities(this.state);
-    const meta = this.dungeonMeta[mapId];
+    // For debug preview, show info about the real map, not "dungeon_preview"
+    const realMapId = this.state.mapModeReturnId ?? mapId;
+    const meta = this.dungeonMeta[realMapId];
 
     const metaEl = document.getElementById("map-info-meta");
     if (metaEl) {
-      let h = `<h3>${mapId}</h3>`;
+      let h = `<h3>${realMapId}</h3>`;
       if (meta) {
         h += `<div class="stat-row"><span>Size</span><span>${meta.size}</span></div>`;
         h += `<div class="stat-row"><span>Diff</span><span>${meta.diff}</span></div>`;
+      }
+      const boss = entities.find(e => e.type === "enemy" && e.name?.includes("[BOSS]"));
+      if (boss) {
+        const bName = boss.name?.replace(" [BOSS]", "") ?? "Boss";
+        h += `<div style="font-size:10px;color:#c04040;margin-top:4px;font-weight:bold;">☠ ${bName}</div>`;
+        h += `<div style="font-size:10px;color:#808080;">hp:${boss.hp}/${boss.maxHp} atk:${boss.atk} def:${boss.def ?? 0}</div>`;
       }
       if (!this.state.mapModeReturnId) {
         h += `<div style="font-size:10px;color:#808080;margin-top:3px;">Click map to warp</div>`;
