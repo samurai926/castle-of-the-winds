@@ -467,6 +467,7 @@
           <button class="win-action-btn" id="dbg-levelup-btn">Level Up</button>
         </div>
         <div class="win-btn-row" style="justify-content:flex-start; gap:6px; margin-top:4px;">
+          <button class="win-action-btn" id="dbg-goto-town-btn">Goto Town</button>
           <button class="win-action-btn" id="dbg-goto-final-btn" style="color:#804000;font-weight:bold;">Goto Final [6]</button>
           <button class="win-action-btn" id="dbg-win-btn" style="color:#006000;font-weight:bold;">Win Game</button>
         </div>
@@ -531,7 +532,7 @@
         <div style="font-size:20px; font-weight:bold; color:#000080; margin-bottom:6px;">★ Castle Cleared! ★</div>
         <div id="v-name" style="font-size:13px; margin-bottom:14px; color:#000;"></div>
         <div id="v-stats" style="text-align:left; font-size:11px; margin-bottom:10px; border-bottom:1px solid #808080; padding-bottom:8px;"></div>
-        <div id="v-kills" style="text-align:left; font-size:11px; max-height:160px; overflow-y:auto; margin-bottom:14px;"></div>
+        <div id="v-kills" style="text-align:left; font-size:11px; max-height:160px; overflow-y:auto; margin-bottom:14px; padding-right:12px;"></div>
         <button onclick="location.reload()" class="win-action-btn">New Game</button>
       </div>
     </div>
@@ -568,11 +569,11 @@
         Gold: <strong id="shop-gold">0</strong>
       </div>
       <div style="display:flex; gap:4px; padding:6px;">
-        <div class="modal-pane" style="flex:1.6; max-height:300px; overflow-y:auto;">
+        <div class="modal-pane" style="flex:1.6; height:240px; overflow-y:auto;">
           <h4>For Sale</h4>
           <div id="shop-stock"></div>
         </div>
-        <div class="modal-pane" style="flex:1; max-height:300px; overflow-y:auto;">
+        <div class="modal-pane" style="flex:1; height:240px; overflow-y:auto;">
           <h4>Sell (50%)</h4>
           <div id="shop-sell"></div>
         </div>

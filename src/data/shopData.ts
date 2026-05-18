@@ -14,7 +14,7 @@ export interface ShopItem {
 
 export const BLACKSMITH_STOCK: ShopItem[] = [
   { name: "Iron Sword",    sprite: "rusty_sword", slot: "weapon", atk: 5,  price: 50  },
-  { name: "Steel Sword",   sprite: "rusty_sword", slot: "weapon", atk: 8,  price: 120 },
+  { name: "Steel Sword",   sprite: "rusty_sword", slot: "weapon", atk: 8,  price: 170 },
   { name: "Leather Armor", sprite: "guard",       slot: "armor",  def: 2,  price: 40  },
   { name: "Chain Mail",    sprite: "guard",       slot: "armor",  def: 4,  price: 90  },
   { name: "Iron Shield",   sprite: "locked_chest",slot: "shield", def: 2,  price: 45  },

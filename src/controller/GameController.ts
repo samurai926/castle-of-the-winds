@@ -132,6 +132,7 @@ export class GameController {
     document.getElementById("dbg-gen-btn")?.addEventListener("click", () => this.debugGenDungeon());
     document.getElementById("dbg-preview-btn")?.addEventListener("click", () => this.debugPreviewDungeon());
     document.getElementById("dbg-spawn-btn")?.addEventListener("click", () => this.debugEnterSpawnMode());
+    document.getElementById("dbg-goto-town-btn")?.addEventListener("click", () => this.debugGotoTown());
     document.getElementById("dbg-goto-final-btn")?.addEventListener("click", () => this.debugGotoFinal());
     document.getElementById("dbg-win-btn")?.addEventListener("click", () => this.debugWinGame());
     document.getElementById("dbg-close")?.addEventListener("click", () => this.closeDebugMenu());
@@ -288,7 +289,7 @@ export class GameController {
       } else if (this.state.equipped.weapon?.isWand) {
         this.fireMode = true;
         this.canvas.style.cursor = "crosshair";
-        this.addMessage("Fire bolt — click target or use WASD/QEZC. F or ESC to cancel.");
+        this.addMessage("Fire bolt — left-click target tile. F or ESC to cancel.");
       } else {
         this.addMessage("No wand equipped.");
       }
@@ -536,6 +537,19 @@ export class GameController {
     this.showVictory();
   }
 
+  private debugGotoTown(): void {
+    this.state.currentMapId = "town";
+    this.state.projectiles = [];
+    const inst = this.state.maps["town"];
+    const spawn = findSpawn(inst.map, inst.entities, 9, 15);
+    this.state.player.x = spawn.x;
+    this.state.player.y = spawn.y;
+    this.refreshFOV();
+    this.updateStatsUI();
+    this.addMessage("[DEBUG] Warped to town.");
+    this.closeDebugMenu();
+  }
+
   private debugGotoFinal(): void {
     const mapId = `dungeon_${FINAL_LEVEL}`;
     if (!this.state.maps[mapId]) {
@@ -603,7 +617,7 @@ export class GameController {
       const map = currentMap(this.state);
       if (map.isSolid(fireX, fireY)) { this.addMessage("The bolt fizzles into the wall."); return; }
       s.mp -= mpCost;
-      const boltDmg = 3 + Math.floor(Math.max(0, s.int - 10));
+      const boltDmg = 8 + Math.floor(Math.max(0, s.int - 10));
       const entities = currentEntities(this.state);
       const adjIdx = entities.findIndex(en => en.x === fireX && en.y === fireY && en.type === "enemy");
       if (adjIdx !== -1) {
@@ -740,7 +754,7 @@ export class GameController {
       }
       case "item": {
         const parts: string[] = [entity.name ?? entity.sprite];
-        if (entity.isWand)  parts.push(`bolt:${3 + Math.floor(Math.max(0, this.state.stats.int - 10))} (INT-scaled)  4 MP/shot  [weapon]`);
+        if (entity.isWand)  parts.push(`bolt:${8 + Math.floor(Math.max(0, this.state.stats.int - 10))} (INT-scaled)  4 MP/shot  [weapon]`);
         else {
           if (entity.atk)     parts.push(`+${entity.atk} ATK`);
           if (entity.def)     parts.push(`+${entity.def} DEF`);
@@ -1116,39 +1130,6 @@ export class GameController {
       return;
     }
 
-    // Fire mode: next directional key fires a wand bolt
-    if (this.fireMode) {
-      const move = this.input.consumeMove();
-      if (!move) return;
-      this.fireMode = false;
-      this.canvas.style.cursor = "";
-      const s = this.state.stats;
-      const mpCost = 4;
-      if (s.mp < mpCost) { this.addMessage("Not enough mana to fire!"); return; }
-      const fireX = this.state.player.x + move.dx;
-      const fireY = this.state.player.y + move.dy;
-      const map = currentMap(this.state);
-      const entities = currentEntities(this.state);
-      if (map.isSolid(fireX, fireY)) { this.addMessage("The bolt fizzles into the wall."); return; }
-      s.mp -= mpCost;
-      const boltDmg = 3 + Math.floor(Math.max(0, s.int - 10));
-      // Adjacent enemy — instant hit (MP already deducted above)
-      const adjIdx = entities.findIndex(e => e.x === fireX && e.y === fireY && e.type === "enemy");
-      if (adjIdx !== -1) {
-        this.applyWandHit(adjIdx, boltDmg);
-        this.updateStatsUI();
-        this.refreshFOV();
-        this.moveEnemies();
-        return;
-      }
-      // Non-adjacent — traveling projectile
-      this.state.projectiles.push({ x: fireX, y: fireY, dx: move.dx, dy: move.dy, damage: boltDmg, ownerId: "player", fromPlayer: true });
-      this.addMessage(`You fire a bolt. (MP: ${s.mp}/${s.maxMp})`);
-      this.updateStatsUI();
-      this.moveEnemies();
-      return;
-    }
-
     const move = this.input.consumeMove();
     if (!move) return;
 
@@ -1280,10 +1261,11 @@ export class GameController {
       this.updateStatsUI();
     }
 
-    // Items
-    const itemIdx = entities.findIndex(
-      (e) => e.x === newX && e.y === newY && e.type === "item"
-    );
+    // Items — pick topmost (last-added) at tile
+    let itemIdx = -1;
+    for (let i = entities.length - 1; i >= 0; i--) {
+      if (entities[i].x === newX && entities[i].y === newY && entities[i].type === "item") { itemIdx = i; break; }
+    }
     if (itemIdx !== -1) {
       const item = entities[itemIdx];
       entities.splice(itemIdx, 1);
@@ -1365,7 +1347,7 @@ export class GameController {
       return false;
     }
     s.mp -= mpCost;
-    const boltDmg = 3 + Math.floor(Math.max(0, s.int - 10));
+    const boltDmg = 8 + Math.floor(Math.max(0, s.int - 10));
     this.applyWandHit(enemyIdx, boltDmg);
     this.addMessage(`(MP: ${s.mp}/${s.maxMp})`);
     this.updateStatsUI();
@@ -1548,11 +1530,10 @@ export class GameController {
     this.state.inventory.forEach((item, idx) => {
       if (used.has(idx)) return;
       used.add(idx);
-      if (item.slot) { groups.push({ item, count: 1, firstIdx: idx }); return; }
       const key = item.name ?? item.sprite;
       let count = 1;
       this.state.inventory.forEach((other, oidx) => {
-        if (oidx <= idx || used.has(oidx) || other.slot) return;
+        if (oidx <= idx || used.has(oidx)) return;
         if ((other.name ?? other.sprite) === key) { count++; used.add(oidx); }
       });
       groups.push({ item, count, firstIdx: idx });
