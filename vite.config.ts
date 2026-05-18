@@ -4,7 +4,7 @@ import { defineConfig, Plugin } from "vite";
 const noModuleType: Plugin = {
   name: "no-module-type",
   transformIndexHtml(html) {
-    return html.replace(/<script type="module" crossorigin/g, "<script");
+    return html.replace(/<script type="module" crossorigin/g, "<script defer");
   },
 };
 
