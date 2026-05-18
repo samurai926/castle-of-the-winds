@@ -18,7 +18,7 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 async function bootstrap() {
   const canvas = document.getElementById("game-canvas") as HTMLCanvasElement;
 
-  const castleImg = await loadImage("/castle.png");
+  const castleImg = await loadImage("castle.png");
   const atlasDataUrl = generateAtlas(castleImg);
   const sprites = new SpriteSheet(atlasDataUrl, SPRITE_DEFS);
 

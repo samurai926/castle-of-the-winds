@@ -1321,7 +1321,7 @@ export class GameController {
       }
       entities.splice(enemyIdx, 1);
       if (enemy.xpReward) this.grantXp(enemy.xpReward);
-      return;
+      return true;
     }
 
     const retDmg = Math.max(1, (enemy.atk ?? 1) - this.playerTotalDef());

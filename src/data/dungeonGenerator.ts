@@ -295,7 +295,7 @@ export function generateDungeon(
       const pos = findFloorInRoom(grid, room);
       const enemyLoot: Entity[] = [];
       if (Math.random() < 0.35) enemyLoot.push({ x:0, y:0, type:"treasure", sprite:"gold", name:"Gold", gold: rand(tmpl.goldMin, tmpl.goldMax) });
-      if (Math.random() < 0.25) enemyLoot.push({ x:0, y:0, type:"item" as const, ...pick(itemPool) });
+      if (Math.random() < 0.25) { const it = pick(itemPool); if (it.sprite) enemyLoot.push({ x:0, y:0, type:"item" as const, sprite: it.sprite, ...it }); }
       entities.push({
         x: pos.x, y: pos.y,
         type: "enemy", sprite: tmpl.sprite, name: tmpl.name,
@@ -322,7 +322,7 @@ export function generateDungeon(
     const cp = findFloorInRoom(grid, cr);
     const crateLoot: Entity[] = [];
     if (Math.random() < 0.50) crateLoot.push({ x:0, y:0, type:"treasure", sprite:"gold", name:"Gold Coins", gold: rand(15, 50) });
-    if (Math.random() < 0.70) crateLoot.push({ x:0, y:0, type:"item" as const, ...pick(itemPool) });
+    if (Math.random() < 0.70) { const it = pick(itemPool); if (it.sprite) crateLoot.push({ x:0, y:0, type:"item" as const, sprite: it.sprite, ...it }); }
     entities.push({ x: cp.x, y: cp.y, type:"chest", sprite:"crate", name:"Supply Crate", loot: crateLoot });
   }
 
