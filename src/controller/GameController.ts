@@ -250,6 +250,7 @@ export class GameController {
       if (this.state.inventoryOpen) { this.closeInventory(); return; }
       if (this.state.shopOpen)      { this.closeShop();      return; }
       if (this.state.debugOpen)     { this.closeDebugMenu(); return; }
+      if (this.state.helpOpen)      { this.closeHelp();      return; }
       if (this.state.mapMode)       { this.toggleMap();      return; }
       if (this.state.mainMenuOpen)  { this.closeMainMenu();  return; }
       this.openMainMenu();
@@ -387,6 +388,14 @@ export class GameController {
 
   private openMainMenu(): void {
     this.state.mainMenuOpen = true;
+    const s = this.state.stats;
+    const hp = this.state.player.hp ?? s.hp;
+    const mapId = this.state.currentMapId;
+    const floor = mapId.startsWith("dungeon_") ? `Floor ${mapId.split("_")[1]} / ${FINAL_LEVEL}` : "Town";
+    const nameEl = document.getElementById("mm-player-name");
+    if (nameEl) nameEl.textContent = this.state.playerName;
+    const infoEl = document.getElementById("mm-player-info");
+    if (infoEl) infoEl.textContent = `Level ${s.level}  ·  HP ${hp}/${s.maxHp}  ·  ${floor}`;
     document.getElementById("mainmenu-modal")!.style.display = "flex";
   }
 
